@@ -1,6 +1,6 @@
 [package]
-name = "Kou"
-version = "0.1.0"
+name = "kou"
+version = "0.0.1"
 authors = ["Adam <classygopher@gmail.com>"]
 edition = "2018"
 
