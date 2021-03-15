@@ -1,4 +1,4 @@
-use crate::{Source, SAMPLE};
+use crate::{Sample, Source};
 
 const INIT_CAPACITY: usize = 16;
 
@@ -6,7 +6,7 @@ const INIT_CAPACITY: usize = 16;
 pub struct BufferedMixer {
     channels: usize,
     sources: Vec<Box<dyn Source + Send + Sync>>,
-    input_buffer: Vec<SAMPLE>,
+    input_buffer: Vec<Sample>,
 }
 
 impl BufferedMixer {
@@ -17,7 +17,7 @@ impl BufferedMixer {
 }
 
 impl Source for BufferedMixer {
-    fn write_samples(&mut self, buffer: &mut [SAMPLE]) -> usize {
+    fn write_samples(&mut self, buffer: &mut [Sample]) -> usize {
         let input_buffer = &mut self.input_buffer;
         let output_channel_count = self.channels;
 

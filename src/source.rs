@@ -1,4 +1,4 @@
-pub use crate::SAMPLE;
+pub use crate::Sample;
 
 /// An audio source. Anything implementing this trait may be played to an output stream.
 pub trait Source {
@@ -8,7 +8,7 @@ pub trait Source {
     /// If the Source has multiple channels then the samples will be interleaved.
     /// Returns the number of samples which were written to the buffer. Values must be written contiguously from
     /// the start of the buffer. A value lower than buffer.len() indicates the sound has ended.
-    fn write_samples(&mut self, buffer: &mut [SAMPLE]) -> usize;
+    fn write_samples(&mut self, buffer: &mut [Sample]) -> usize;
 
     /// Returns the number of channels in this Source object's audio data.
     fn channel_count(&self) -> usize;

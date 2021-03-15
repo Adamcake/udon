@@ -1,4 +1,4 @@
-use crate::{Source, SAMPLE};
+use crate::{Sample, Source};
 
 /// Implementation of a PQF resampler. Construct with: Resampler::new(source, source_rate, dest_rate)
 /// Once constructed, it will behave as a Source object which outputs samples at the target sample rate.
@@ -11,8 +11,8 @@ where
     to: u32,
     left_offset: usize,
     kaiser_values: Box<[f64]>,
-    filter_1: Box<[SAMPLE]>,
-    filter_2: Box<[SAMPLE]>,
+    filter_1: Box<[Sample]>,
+    filter_2: Box<[Sample]>,
 
     // The size of the entire filter including both buffers
     whole_filter_size: usize,
@@ -75,7 +75,7 @@ impl<S: Source> Resampler<S> {
 
             #[inline]
             fn kaiser(k: f64) -> f64 {
-                if k < -1.0 || k > 1.0 {
+                if !(-1.0..=1.0).contains(&k) {
                     0.0
                 } else {
                     // 6.20426 is the Kaiser beta value for a rejection of 65 dB.
@@ -149,7 +149,7 @@ impl<S: Source> Resampler<S> {
 }
 
 impl<S: Source> Source for Resampler<S> {
-    fn write_samples(&mut self, buffer: &mut [SAMPLE]) -> usize {
+    fn write_samples(&mut self, buffer: &mut [Sample]) -> usize {
         let from = u64::from(self.from);
         let to = u64::from(self.to);
         let channels = self.source.channel_count();
@@ -207,7 +207,7 @@ impl<S: Source> Source for Resampler<S> {
                     .step_by(channels)
                     .zip(self.kaiser_values.iter().skip(kaiser_index as usize).step_by(to as usize))
                     .map(|(s, k)| f64::from(*s) * k)
-                    .sum::<f64>() as SAMPLE;
+                    .sum::<f64>() as Sample;
             } else {
                 // The start is in filter_2
                 let offset = sample_index as usize - self.buffer_size;
@@ -227,7 +227,7 @@ impl<S: Source> Source for Resampler<S> {
                             .step_by(channels)
                             .zip(self.kaiser_values.iter().skip(kaiser_index as usize).step_by(to as usize).skip(skip))
                             .map(|(s, k)| f64::from(*s) * k)
-                            .sum::<f64>()) as SAMPLE;
+                            .sum::<f64>()) as Sample;
                 } else {
                     // The window has passed the end of filter_2, so everything we need is in filter_2
                     // TODO: this is unreachable because of the early return. Should we handle this?
