@@ -57,7 +57,7 @@ where
             f32_source.lock().unwrap().write_samples(data);
         };
 
-        let write_i16 = move |_data: &mut [i16], _: &cpal::OutputCallbackInfo| {todo!("write_i16")};
+        let write_i16 = move |_data: &mut [i16], _: &cpal::OutputCallbackInfo| todo!("write_i16");
 
         let write_u16 = move |_data: &mut [u16], _: &cpal::OutputCallbackInfo| todo!("write_u16");
 

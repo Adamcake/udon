@@ -1,4 +1,4 @@
-use crate::{SAMPLE, Source};
+use crate::{Source, SAMPLE};
 
 const INIT_CAPACITY: usize = 16;
 
@@ -25,7 +25,7 @@ impl Source for BufferedMixer {
 
         self.sources.retain_mut(|source| {
             let source_channel_count = source.channel_count();
-            input_buffer.resize_with(buffer.len() * source_channel_count / output_channel_count, Default::default); // TODO: use unsafe for this?
+            input_buffer.resize_with(buffer.len() * source_channel_count / output_channel_count, Default::default);
             let count = source.write_samples(input_buffer);
 
             if source_channel_count == output_channel_count {
