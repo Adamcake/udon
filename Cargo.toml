@@ -3,6 +3,11 @@ name = "kou"
 version = "0.0.1"
 authors = ["Adam <classygopher@gmail.com>"]
 edition = "2018"
+description = "降雨"
+repository = "https://github.com/Adamcake/Kou/"
+license = "GPL-2.0-only"
+keywords = ["audio", "gamedev", "playback"]
+include = ["src/**/*", "Cargo.toml"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
