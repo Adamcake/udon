@@ -3,20 +3,20 @@ use crate::{Sample, Source};
 const INIT_CAPACITY: usize = 16;
 
 /// A simple additive mixer. Implements the Mixer trait. See the Mixer trait description for more information.
-pub struct BufferedMixer {
+pub struct Mixer {
     channels: usize,
     sources: Vec<Box<dyn Source + Send + Sync>>,
     input_buffer: Vec<Sample>,
 }
 
-impl BufferedMixer {
+impl Mixer {
     /// Constructs a new Mixer. `channels` is the number of channels wanted in the output data.
     pub fn new(channels: usize) -> Self {
         Self { channels, sources: Vec::with_capacity(INIT_CAPACITY), input_buffer: Vec::new() }
     }
 }
 
-impl Source for BufferedMixer {
+impl Source for Mixer {
     fn write_samples(&mut self, buffer: &mut [Sample]) -> usize {
         let input_buffer = &mut self.input_buffer;
         let output_channel_count = self.channels;
