@@ -140,7 +140,7 @@ impl RingBuffer {
             output.copy_from_slice(data);
 
             // Remove data from the front of the ring buffer
-            self.index = (self.index + self.len) % self.data.len();
+            self.index = (self.index + output.len()) % self.data.len();
             self.len -= output.len();
         } else {
             // Two memcpy's
