@@ -23,9 +23,9 @@ where
 {
     /// Sets up and returns an OutputStream. Takes a closure which sets up a Mixer.
     /// The Mixer must be a Source, and must be thread-safe (Send + Sync).
-    pub fn with<F>(mut mixer_setup: F) -> Result<Self, Error>
+    pub fn with<F>(mixer_setup: F) -> Result<Self, Error>
     where
-        F: FnMut(u16) -> S,
+        F: FnOnce(u16) -> S,
     {
         let err_fn = |err| eprintln!("an error occurred on the output audio stream: {}", err);
 
