@@ -48,14 +48,13 @@ where
         unsafe {
             buffer.set_len(capacity);
         }
-        let mut data = buffer.into_boxed_slice();
 
-        let samples_remaining = {
-            let len = source.write_samples(&mut data);
-            if len == capacity { None } else { Some(len) }
-        };
-
-        let ring_buffer = Arc::new(Mutex::new(RingBuffer { data, index: 0, len: 0, samples_remaining }));
+        let ring_buffer = Arc::new(Mutex::new(RingBuffer {
+            data: buffer.into_boxed_slice(),
+            index: 0,
+            len: 0,
+            samples_remaining: None,
+        }));
         let ring_buffer_clone = ring_buffer.clone();
 
         std::thread::spawn(move || {
