@@ -28,6 +28,7 @@ struct RingBuffer {
     index: usize,
     len: usize,
     samples_remaining: Option<usize>,
+    dropped: bool,
 }
 
 impl<S> Buffer<S>
@@ -50,7 +51,13 @@ where
         }
 
         let ring_buffer = Arc::new((
-            Mutex::new(RingBuffer { data: buffer.into_boxed_slice(), index: 0, len: 0, samples_remaining: None }),
+            Mutex::new(RingBuffer {
+                data: buffer.into_boxed_slice(),
+                index: 0,
+                len: 0,
+                samples_remaining: None,
+                dropped: false,
+            }),
             Condvar::new(),
         ));
         let ring_buffer_clone = ring_buffer.clone();
@@ -65,6 +72,11 @@ where
                 // Wait until we're notified that we need to fill the buffer
                 while ring_buffer.len >= ring_buffer.data.len() {
                     ring_buffer = cvar.wait(ring_buffer).unwrap();
+
+                    // Stop if the Buffer was dropped
+                    if ring_buffer.dropped {
+                        break
+                    }
                 }
 
                 // Fill ring buffer from source
@@ -145,6 +157,18 @@ where
 
     fn channel_count(&self) -> usize {
         self.channel_count
+    }
+}
+
+impl<S> Drop for Buffer<S>
+where
+    S: Source + Send + 'static,
+{
+    fn drop(&mut self) {
+        let (b, cvar) = &*self.buffer;
+        let mut ring_buffer = b.lock().unwrap();
+        ring_buffer.dropped = true;
+        cvar.notify_one();
     }
 }
 
