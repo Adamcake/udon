@@ -54,8 +54,8 @@ where
 
         let f32_source = source.clone();
         let write_f32 = move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-            let count = f32_source.lock().unwrap().write_samples(data);
-            data[count..].iter_mut().for_each(|s| *s = 0.0);
+            data.iter_mut().for_each(|s| *s = 0.0);
+            f32_source.lock().unwrap().write_samples(data);
         };
 
         let write_i16 = move |_data: &mut [i16], _: &cpal::OutputCallbackInfo| todo!("write_i16");
