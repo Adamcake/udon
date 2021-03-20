@@ -1,7 +1,7 @@
 use crate::{Sample, Source};
 use std::{
     marker::PhantomData,
-    sync::{Arc, Mutex},
+    sync::{Arc, Condvar, Mutex},
 };
 
 const DEF_BUFFER_SIZE: usize = 4800;
@@ -20,7 +20,7 @@ where
 {
     _source: PhantomData<S>,
     channel_count: usize,
-    buffer: Arc<Mutex<RingBuffer>>,
+    buffer: Arc<(Mutex<RingBuffer>, Condvar)>,
 }
 
 struct RingBuffer {
@@ -49,39 +49,50 @@ where
             buffer.set_len(capacity);
         }
 
-        let ring_buffer = Arc::new(Mutex::new(RingBuffer {
-            data: buffer.into_boxed_slice(),
-            index: 0,
-            len: 0,
-            samples_remaining: None,
-        }));
+        let ring_buffer = Arc::new((
+            Mutex::new(RingBuffer { data: buffer.into_boxed_slice(), index: 0, len: 0, samples_remaining: None }),
+            Condvar::new(),
+        ));
         let ring_buffer_clone = ring_buffer.clone();
 
         std::thread::spawn(move || {
             let mut back_buffer = Vec::with_capacity(capacity);
 
-            loop {
-                let mut ring_buffer = ring_buffer_clone.lock().unwrap();
-                let samples_missing = ring_buffer.data.len() - ring_buffer.len;
-                if samples_missing > 0 {
-                    unsafe {
-                        back_buffer.set_len(samples_missing);
-                    }
-                    let written_count = source.write_samples(&mut back_buffer);
-                    if written_count < samples_missing {
-                        ring_buffer.samples_remaining = Some(ring_buffer.len + written_count);
-                    }
+            let (b, cvar) = &*ring_buffer_clone;
+            let mut ring_buffer = b.lock().unwrap();
 
-                    let write_index = (ring_buffer.index + ring_buffer.len) % ring_buffer.data.len();
-                    if let Some(data) = ring_buffer.data.get_mut(write_index..(write_index + samples_missing)) {
-                        data.copy_from_slice(&back_buffer);
-                    } else {
-                        let split_index = ring_buffer.data.len() - write_index;
-                        let (back1, back2) = back_buffer.split_at(split_index);
-                        ring_buffer.data[write_index..].copy_from_slice(back1);
-                        ring_buffer.data[..back2.len()].copy_from_slice(back2);
+            loop {
+                // Wait until we're notified that we need to fill the buffer
+                while ring_buffer.len >= ring_buffer.data.len() {
+                    ring_buffer = cvar.wait(ring_buffer).unwrap();
+                }
+
+                // Fill ring buffer from source
+                let samples_missing = ring_buffer.data.len() - ring_buffer.len;
+                unsafe {
+                    back_buffer.set_len(samples_missing);
+                }
+                let written_count = source.write_samples(&mut back_buffer);
+                if written_count < samples_missing {
+                    unsafe {
+                        back_buffer.set_len(written_count);
                     }
-                    ring_buffer.len = ring_buffer.data.len();
+                    ring_buffer.samples_remaining = Some(ring_buffer.len + written_count);
+                }
+
+                let write_index = (ring_buffer.index + ring_buffer.len) % ring_buffer.data.len();
+                if let Some(data) = ring_buffer.data.get_mut(write_index..(write_index + written_count)) {
+                    data.copy_from_slice(&back_buffer);
+                } else {
+                    let split_index = ring_buffer.data.len() - write_index;
+                    let (back1, back2) = back_buffer.split_at(split_index);
+                    ring_buffer.data[write_index..].copy_from_slice(back1);
+                    ring_buffer.data[..back2.len()].copy_from_slice(back2);
+                }
+                ring_buffer.len = ring_buffer.data.len();
+
+                if ring_buffer.samples_remaining.is_some() {
+                    break
                 }
             }
         });
@@ -97,7 +108,7 @@ where
     fn write_samples(&mut self, mut output_buffer: &mut [Sample]) -> usize {
         loop {
             // Lock access to ring buffer
-            let mut ring_buffer = self.buffer.lock().unwrap();
+            let mut ring_buffer = self.buffer.0.lock().unwrap();
 
             // Check if there's enough data in the ring buffer to totally fill the output
             let output = if let Some(s) = &mut ring_buffer.samples_remaining {
@@ -116,11 +127,17 @@ where
             }
 
             if ring_buffer.len >= output.len() {
+                // There's enough data to complete this request, so write and return
                 ring_buffer.write_to(output);
+                self.buffer.1.notify_one();
                 break output.len()
             } else {
+                // There's some data in the buffer, but not enough.
+                // This will most likely happen if the buffer is smaller than the read being performed.
+                // Write it to the output, truncate the output slice, then continue looping to wait for more data
                 let sample_count = ring_buffer.len;
                 ring_buffer.write_to(&mut output[..sample_count]);
+                self.buffer.1.notify_one();
                 output_buffer = &mut output_buffer[sample_count..];
             }
         }
