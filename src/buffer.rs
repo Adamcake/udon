@@ -82,11 +82,15 @@ where
                 // Fill ring buffer from source
                 let samples_missing = ring_buffer.data.len() - ring_buffer.len;
                 unsafe {
+                    // SAFETY: back_buffer is created with the same capacity as ring_buffer.data's length,
+                    // and here we are setting length to ring_buffer.data.len() at most
                     back_buffer.set_len(samples_missing);
                 }
                 let written_count = source.write_samples(&mut back_buffer);
                 if written_count < samples_missing {
                     unsafe {
+                        // SAFETY: samples_missing is a safe length as explained above, and we've also verified that
+                        // written_count is lower than samples_missing
                         back_buffer.set_len(written_count);
                     }
                     ring_buffer.samples_remaining = Some(ring_buffer.len + written_count);
