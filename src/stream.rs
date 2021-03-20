@@ -1,4 +1,4 @@
-use crate::{Error, Source};
+use crate::{Error, Sample, Source};
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     BuildStreamError, PlayStreamError, SampleFormat, SupportedStreamConfigsError,
@@ -58,9 +58,35 @@ where
             f32_source.lock().unwrap().write_samples(data);
         };
 
-        let write_i16 = move |_data: &mut [i16], _: &cpal::OutputCallbackInfo| todo!("write_i16");
+        let i16_source = source.clone();
+        let mut i16_buf: Vec<Sample> = Vec::new();
+        let write_i16 = move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
+            i16_buf.clear();
+            i16_buf.reserve(data.len());
+            unsafe {
+                i16_buf.set_len(data.len());
+            }
+            i16_buf.iter_mut().for_each(|s| *s = 0.0);
+            i16_source.lock().unwrap().write_samples(&mut i16_buf);
+            for (in_sample, out_sample) in i16_buf.iter().zip(data.iter_mut()) {
+                *out_sample = (in_sample * f32::from(i16::MAX)) as i16;
+            }
+        };
 
-        let write_u16 = move |_data: &mut [u16], _: &cpal::OutputCallbackInfo| todo!("write_u16");
+        let u16_source = source.clone();
+        let mut u16_buf: Vec<Sample> = Vec::new();
+        let write_u16 = move |data: &mut [u16], _: &cpal::OutputCallbackInfo| {
+            u16_buf.clear();
+            u16_buf.reserve(data.len());
+            unsafe {
+                u16_buf.set_len(data.len());
+            }
+            u16_buf.iter_mut().for_each(|s| *s = 0.0);
+            u16_source.lock().unwrap().write_samples(&mut u16_buf);
+            for (in_sample, out_sample) in u16_buf.iter().zip(data.iter_mut()) {
+                *out_sample = ((in_sample + 1.0) * f32::from(i16::MAX)) as u16;
+            }
+        };
 
         let sample_format = supported_config.sample_format();
         let config = supported_config.into();
