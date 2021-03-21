@@ -4,6 +4,8 @@ pub mod mixer;
 pub mod resampler;
 pub mod source;
 mod stream;
+#[cfg(feature = "wav")]
+pub mod wav;
 
 pub use buffer::Buffer;
 pub use error::Error;
