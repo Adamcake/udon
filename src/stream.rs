@@ -21,11 +21,12 @@ impl<S> OutputStream<S>
 where
     S: Source + Send + Sync + 'static,
 {
-    /// Sets up and returns an OutputStream. Takes a closure which sets up a Mixer.
-    /// The Mixer must be a Source, and must be thread-safe (Send + Sync).
+    /// Sets up and returns an OutputStream. Takes a closure which returns a Source, which will be used for
+    /// continuous playback until the OutputStream is dropped. The Source must be thread-safe (Send + Sync)
+    /// The params to the closure are (u16, u32) which represent the output's channel count and sample rate.
     pub fn with<F>(mixer_setup: F) -> Result<Self, Error>
     where
-        F: FnOnce(u16) -> S,
+        F: FnOnce(u16, u32) -> S,
     {
         let err_fn = |err| eprintln!("an error occurred on the output audio stream: {}", err);
 
@@ -50,7 +51,7 @@ where
         let sample_rate = supported_config.sample_rate().0;
         let channel_count: u16 = supported_config.channels();
 
-        let source = Arc::new(Mutex::new(mixer_setup(channel_count)));
+        let source = Arc::new(Mutex::new(mixer_setup(channel_count, sample_rate)));
 
         let f32_source = source.clone();
         let write_f32 = move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
