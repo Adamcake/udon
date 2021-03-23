@@ -9,6 +9,7 @@ pub mod wav;
 
 pub use buffer::Buffer;
 pub use error::Error;
+pub use mixer::Mixer;
 pub use resampler::Resampler;
 pub use source::Source;
 pub use stream::OutputStream;
