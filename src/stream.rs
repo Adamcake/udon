@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 /// This object will be queried for samples to be played directly to the output device.
 pub struct OutputStream<S>
 where
-    S: Source + Send + Sync + 'static,
+    S: Source + Send + 'static,
 {
     _stream: cpal::Stream,
     _source: Arc<Mutex<S>>,
@@ -19,10 +19,10 @@ where
 
 impl<S> OutputStream<S>
 where
-    S: Source + Send + Sync + 'static,
+    S: Source + Send + 'static,
 {
     /// Sets up and returns an OutputStream. Takes a closure which returns a Source, which will be used for
-    /// continuous playback until the OutputStream is dropped. The Source must be thread-safe (Send + Sync)
+    /// continuous playback until the OutputStream is dropped.
     /// The params to the closure are (u16, u32) which represent the output's channel count and sample rate.
     pub fn with<F>(mixer_setup: F) -> Result<Self, Error>
     where
