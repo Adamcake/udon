@@ -1,8 +1,5 @@
 #[derive(Debug)]
 pub enum Error {
-    /// "catch-all" error type returned by CPAL in cases of unknown or unexpected errors
-    CPALError(cpal::BackendSpecificError),
-
     /// The device no longer exists (ie. it has been disabled or unplugged)
     DeviceNotAvailable,
 

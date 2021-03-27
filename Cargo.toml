@@ -12,5 +12,6 @@ include = ["src/**/*", "Cargo.toml"]
 [features]
 wav = []
 
-[dependencies]
-cpal = "0.13"
+[[bin]]
+name = "file_wav"
+required-features = ["wav"]
