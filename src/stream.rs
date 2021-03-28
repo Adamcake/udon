@@ -47,16 +47,9 @@ macro_rules! backends {
             }
         }
 
-        #[allow(unused_doc_comments)]
-        impl Api {
-            pub fn default_output_device(&self) -> Option<Device> {
-                match self.0 {
-                    $(
-                        #[cfg($cfg)]
-                        $(#[$outer])*
-                        ApiImpl::$variant(ref imp) => imp.default_output_device(),
-                    )*
-                }
+        backend_wrap_fns! {
+            impl Api(ApiImpl) <- $( $variant if $cfg ),* {
+                fn default_output_device(&self) -> Option<Device>;
             }
         }
 
@@ -91,6 +84,39 @@ macro_rules! backends {
             ),*
         }
     };
+}
+macro_rules! backend_wrap_fns {
+    (
+        impl $target:ident ( $enum:ident ) <- $( $variant:ident if $cfg:meta ),* {
+            $( $rest:tt )*
+        }
+    ) => {
+        impl $target {
+            backend_wrap_fns!(@wrap $enum $($variant if $cfg),* $($rest)*);
+        }
+    };
+    (
+        @wrap
+        $enum:ident $( $variant:ident if $cfg:meta ),*
+        $(#[$fn_outer:meta])*
+        fn $fn_name:ident ( & self $( , $arg_name:ident : $arg_ty:ty )* ) -> $( $ret:ty )? ;
+        $( $rest:tt )*
+    ) => {
+        $(#[$fn_outer])*
+        fn $fn_name ( & self $( , $arg_name : $arg_ty)* ) $(-> $ret)? {
+            macro_rules! _invoke_hack {
+                ($imp:expr) => { $imp . $fn_name ( $($arg_name),* ) };
+            }
+            match self.0 {
+                $(
+                    #[cfg($cfg)]
+                    $enum :: $variant (ref imp) => _invoke_hack!(imp)
+                ),*
+            }
+        }
+        backend_wrap_fns!(@wrap $enum $($variant if $cfg),* $($rest)*);
+    };
+    ( @wrap $enum:ident $( $variant:ident if $cfg:meta ),* ) => {};
 }
 
 backends! {
