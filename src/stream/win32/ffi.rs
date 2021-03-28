@@ -88,11 +88,11 @@ pub union WAVEFORMATEXTENSIBLE_Samples {
 
 // Unused structs we don't define
 #[repr(C)]
-pub struct IMMNotificationClient;
+pub struct IMMNotificationClient { _placeholder: *const c_void }
 #[repr(C)]
-pub struct PROPVARIANT;
+pub struct PROPVARIANT { _placeholder: *const c_void }
 #[repr(C)]
-pub struct SECURITY_ATTRIBUTES;
+pub struct SECURITY_ATTRIBUTES { _placeholder: *const c_void }
 
 // Windows Functions (Static Linking)
 #[link(name = "Kernel32")]
