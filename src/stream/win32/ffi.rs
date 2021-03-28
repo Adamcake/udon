@@ -146,15 +146,15 @@ macro_rules! com_interface {
             #[repr(C)]
             $v struct $vt_name {
                 __iunknown_vtable: IUnknownVtable,
-                $( $fn_name: unsafe extern "system" fn( $($arg_ty),* ) -> $ret ),*
+                $( $fn_name: unsafe extern "system" fn( *mut $name , $($arg_ty),* ) -> $ret ),*
             }
 
             impl $name {
                 $(
                     $(#[$fn_outer])*
                     #[inline]
-                    pub unsafe fn $fn_name ( &self , $( $arg_name : $arg_ty ),* ) -> $ret {
-                        ((*self.0).$fn_name)( $( $arg_name ),* )
+                    pub unsafe fn $fn_name ( &mut self , $( $arg_name : $arg_ty ),* ) -> $ret {
+                        ((*self.0).$fn_name)( self , $( $arg_name ),* )
                     }
                 )*
             }
@@ -230,15 +230,15 @@ com_interface! {
             phnsDefaultDevicePeriod: *mut REFERENCE_TIME,
             phnsMinimumDevicePeriod: *mut REFERENCE_TIME,
         ) -> HRESULT;
-        fn Start(This: *mut IAudioClient) -> HRESULT;
-        fn Stop(This: *mut IAudioClient) -> HRESULT;
-        fn Reset(This: *mut IAudioClient) -> HRESULT;
+        fn Start() -> HRESULT;
+        fn Stop() -> HRESULT;
+        fn Reset() -> HRESULT;
         fn SetEventHandle(eventHandle: HANDLE) -> HRESULT;
         fn GetService(riid: REFIID, ppv: *mut LPVOID) -> HRESULT;
     }
 
     pub interface IAudioRenderClient(IAudioRenderClientVtable) {
-        fn GetBuffer(This: *mut IAudioRenderClient, NumFramesRequested: UINT32, ppData: *mut *mut BYTE) -> HRESULT;
-        fn ReleaseBuffer(This: *mut IAudioRenderClient, NumFramesWritten: UINT32, dwFlags: DWORD) -> HRESULT;
+        fn GetBuffer(NumFramesRequested: UINT32, ppData: *mut *mut BYTE) -> HRESULT;
+        fn ReleaseBuffer(NumFramesWritten: UINT32, dwFlags: DWORD) -> HRESULT;
     }
 }
