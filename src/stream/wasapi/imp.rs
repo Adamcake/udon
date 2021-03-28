@@ -80,6 +80,10 @@ impl Api {
     pub fn new() -> Self {
         Self
     }
+
+    pub fn default_output_device(&self) -> Option<stream::Device> {
+        Device::default_output().map(|dev| stream::Device(stream::DeviceImpl::WASAPI(dev)))
+    }
 }
 
 pub struct Device {

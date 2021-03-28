@@ -35,7 +35,7 @@ macro_rules! backends {
                             #[cfg(not($cfg))]
                             { None }
                         },
-                    ),*
+                    )*
                 }
             }
 
@@ -44,6 +44,19 @@ macro_rules! backends {
                 // TODO: Don't be stupid, and also document what the defaults are
                 // Defaults shouldn't change with feature switches because that's non-additive
                 Self::new(Backend::WASAPI).expect("no backends available (enable them via cargo features)")
+            }
+        }
+
+        #[allow(unused_doc_comments)]
+        impl Api {
+            pub fn default_output_device(&self) -> Option<Device> {
+                match self.0 {
+                    $(
+                        #[cfg($cfg)]
+                        $(#[$outer])*
+                        ApiImpl::$variant(ref imp) => imp.default_output_device(),
+                    )*
+                }
             }
         }
 
