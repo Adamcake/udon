@@ -51,6 +51,7 @@ pub const TRUE: BOOL = 0;
 
 // Windows Structs & Unions
 #[repr(C)]
+#[derive(Eq, PartialEq)]
 pub struct GUID {
     pub data1: c_ulong,
     pub data2: c_ushort,
@@ -97,18 +98,18 @@ pub struct SECURITY_ATTRIBUTES { _placeholder: *const c_void }
 // Windows Functions (Static Linking)
 #[link(name = "Kernel32")]
 extern "system" {
-    fn CreateEventW(
+    pub fn CreateEventW(
         lpEventAttributes: LPSECURITY_ATTRIBUTES,
         bManualReset: BOOL,
         bInitialState: BOOL,
         lpName: LPCWSTR
     ) -> HANDLE;
-    fn WaitForSingleObjectEx(hHandle: HANDLE, dwMilliseconds: DWORD, bAlertable: BOOL) -> DWORD;
+    pub fn WaitForSingleObjectEx(hHandle: HANDLE, dwMilliseconds: DWORD, bAlertable: BOOL) -> DWORD;
 }
 #[link(name = "Ole32")]
 extern "system" {
-    fn CoInitializeEx(pvReserved: LPVOID, dwCoInit: DWORD) -> HRESULT;
-    fn CoCreateInstance(
+    pub fn CoInitializeEx(pvReserved: LPVOID, dwCoInit: DWORD) -> HRESULT;
+    pub fn CoCreateInstance(
         rclsid: REFCLSID,
         pUnkOuter: LPUNKNOWN,
         dwClsContext: DWORD,
