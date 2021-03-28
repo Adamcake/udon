@@ -10,4 +10,6 @@ keywords = ["audio", "gamedev", "playback"]
 include = ["src/**/*", "Cargo.toml"]
 
 [features]
+default = ["wasapi"] # TODO: "if windows"
+wasapi = []
 wav = []
