@@ -1,5 +1,5 @@
 use crate::stream::Format;
-use std::{ffi, ptr};
+use std::{any, ffi, ptr, ops};
 use super::ffi::*;
 
 const CLSCTX_ALL: u32 = 23; // (CLSCTX_INPROC_SERVER | CLSCTX_INPROC_HANDLER | CLSCTX_LOCAL_SERVER | CLSCTX_REMOTE_SERVER)
@@ -8,6 +8,61 @@ const clsid: GUID = GUID { data1: 0xBCDE0395, data2: 0xE52F, data3: 0x467C, data
 const imm_device_enumerator: GUID = GUID { data1: 0xA95664D2, data2: 0x9614, data3: 0x4F35, data4: [0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6] };
 const iaudioclient: GUID = GUID { data1: 0x1CB9AD4C, data2: 0xDBFA, data3: 0x4c32, data4: [0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2] };
 const iaudiorenderclient: GUID = GUID { data1: 0xf294acfc, data2: 0x3146, data3: 0x4483, data4: [0xa7, 0xbf, 0xad, 0xdc, 0xa7, 0xc2, 0x60, 0xe2] };
+
+struct IPtr<T> {
+    ptr: *mut T,
+}
+
+impl<T> IPtr<T> {
+    fn new(ptr: *mut T) -> Self {
+        Self { ptr }
+    }
+
+    fn null() -> Self {
+        Self {
+            ptr: ptr::null_mut(),
+        }
+    }
+}
+
+impl<T> ops::Deref for IPtr<T> {
+    type Target = T;
+
+    #[cfg_attr(not(debug_assertions), inline(always))]
+    fn deref(&self) -> &Self::Target {
+        #[cfg(debug_assertions)]
+        if !self.ptr.is_null() {
+            unsafe { &*self.ptr }
+        } else {
+            panic!("{} deref when null", any::type_name::<Self>());
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe { &*self.ptr }
+    }
+}
+
+impl<T> ops::DerefMut for IPtr<T> {
+    #[cfg_attr(not(debug_assertions), inline(always))]
+    fn deref_mut(&mut self) -> &mut <Self as ops::Deref>::Target {
+        #[cfg(debug_assertions)]
+        if !self.ptr.is_null() {
+            unsafe { &mut *self.ptr }
+        } else {
+            panic!("{} deref-mut when null", any::type_name::<Self>());
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe { &mut *self.ptr }
+    }
+}
+
+impl<T> ops::Drop for IPtr<T> {
+    #[inline]
+    fn drop(&mut self) {
+        if !self.ptr.is_null() {
+            unsafe { ptr::drop_in_place(self.ptr) }
+        }
+    }
+}
 
 pub struct Device {
     device_ptr: *mut IMMDevice,
