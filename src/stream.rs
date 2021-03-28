@@ -49,7 +49,7 @@ macro_rules! backends {
 
         backend_wrap_fns! {
             impl Api(ApiImpl) <- $( $variant if $cfg ),* {
-                fn default_output_device(&self) -> Option<Device>;
+                pub fn default_output_device(&self) -> Option<Device>;
             }
         }
 
@@ -92,18 +92,18 @@ macro_rules! backend_wrap_fns {
         }
     ) => {
         impl $target {
-            backend_wrap_fns!(@wrap $enum $($variant if $cfg),* $($rest)*);
+            backend_wrap_fns!(@wrap $enum ( $($variant if $cfg),* ) $($rest)*);
         }
     };
     (
         @wrap
-        $enum:ident $( $variant:ident if $cfg:meta ),*
+        $enum:ident ( $( $variant:ident if $cfg:meta ),* )
         $(#[$fn_outer:meta])*
-        fn $fn_name:ident ( & self $( , $arg_name:ident : $arg_ty:ty )* ) -> $( $ret:ty )? ;
+        $v:vis fn $fn_name:ident ( & self $( , $arg_name:ident : $arg_ty:ty )* ) $( -> $ret:ty )? ;
         $( $rest:tt )*
     ) => {
         $(#[$fn_outer])*
-        fn $fn_name ( & self $( , $arg_name : $arg_ty)* ) $(-> $ret)? {
+        $v fn $fn_name ( & self $( , $arg_name : $arg_ty)* ) $( -> $ret )? {
             macro_rules! _invoke_hack {
                 ($imp:expr) => { $imp . $fn_name ( $($arg_name),* ) };
             }
