@@ -1,5 +1,5 @@
-use crate::stream::Format;
-use std::{any, ffi, ptr, ops};
+use crate::{Source, stream::Format};
+use std::{any, ptr, ops};
 use super::ffi::*;
 
 const CLSCTX_ALL: u32 = 23; // (CLSCTX_INPROC_SERVER | CLSCTX_INPROC_HANDLER | CLSCTX_LOCAL_SERVER | CLSCTX_REMOTE_SERVER)
@@ -65,7 +65,6 @@ impl<T> ops::Drop for IPtr<T> {
 }
 
 pub struct Device {
-    device_ptr: *mut IMMDevice,
     audio_client_ptr: *mut IAudioClient,
     waveformat_ptr: *mut WAVEFORMATEX,
     sample_format: Format,
@@ -79,17 +78,17 @@ impl Device {
     pub fn default() -> Option<Self> {
         unsafe {
             let mut enumerator: *mut IMMDeviceEnumerator = ptr::null_mut();
-            let err = CoInitializeEx(ptr::null_mut(), 0);
-            let err = CoCreateInstance(&clsid, ptr::null_mut(), CLSCTX_ALL, &imm_device_enumerator, (&mut enumerator) as *mut *mut _ as *mut LPVOID);
+            let _err = CoInitializeEx(ptr::null_mut(), 0);
+            let _err = CoCreateInstance(&clsid, ptr::null_mut(), CLSCTX_ALL, &imm_device_enumerator, (&mut enumerator) as *mut *mut _ as *mut LPVOID);
             let mut device: *mut IMMDevice = ptr::null_mut();
-            let err = (*enumerator).GetDefaultAudioEndpoint(0, 0, (&mut device) as _);
+            let _err = (*enumerator).GetDefaultAudioEndpoint(0, 0, (&mut device) as _);
             let mut audio_client: *mut IAudioClient = ptr::null_mut();
-            let err = (*device).Activate((&iaudioclient) as *const GUID as _, CLSCTX_ALL, ptr::null_mut(), (&mut audio_client) as *mut *mut IAudioClient as _);
+            let _err = (*device).Activate((&iaudioclient) as *const GUID as _, CLSCTX_ALL, ptr::null_mut(), (&mut audio_client) as *mut *mut IAudioClient as _);
             let mut default_period: i64 = 0;
             let mut min_period: i64 = 0;
-            let err = (*audio_client).GetDevicePeriod(&mut default_period, &mut min_period);
+            let _err = (*audio_client).GetDevicePeriod(&mut default_period, &mut min_period);
             let mut format_info: *mut WAVEFORMATEX = ptr::null_mut();
-            let err = (*audio_client).GetMixFormat(&mut format_info);
+            let _err = (*audio_client).GetMixFormat(&mut format_info);
             
             let sample_format = match ((*format_info).wFormatTag, (*format_info).wBitsPerSample) {
                 (1, 16) => Format::I16,
@@ -100,11 +99,83 @@ impl Device {
             };
 
             Some(Device {
-                device_ptr: device,
                 audio_client_ptr: audio_client,
                 waveformat_ptr: format_info,
                 sample_format,
             })
+        }
+    }
+}
+
+impl OutputStream {
+    pub fn new(device: Device, mut source: impl Source + Send + 'static) -> Self {
+        unsafe {
+            let handle = CreateEventW(ptr::null_mut(), 0, 0, ptr::null());
+            let _err = (*device.audio_client_ptr).SetEventHandle(handle);
+            let mut buffer_frame_count: u32 = 0;
+            let _err = (*device.audio_client_ptr).GetBufferSize(&mut buffer_frame_count);
+            let mut render_client: *mut IAudioRenderClient = ptr::null_mut();
+            let _err = (*device.audio_client_ptr).GetService((&iaudiorenderclient) as *const GUID as _, (&mut render_client) as *mut *mut IAudioRenderClient as _);
+            let mut buffer_data: *mut u8 = ptr::null_mut();
+            let _err = (*render_client).GetBuffer(buffer_frame_count, &mut buffer_data);
+
+            let written_count = match device.sample_format {
+                Format::F32 => {
+                    let buf_slice = std::slice::from_raw_parts_mut(buffer_data as *mut f32, (buffer_frame_count * u32::from((*device.waveformat_ptr).nChannels)) as _);
+                    source.write_samples(buf_slice)
+                },
+                Format::I16 => {
+                    todo!()
+                },
+            };
+
+            let written_count = (written_count / usize::from((*device.waveformat_ptr).nChannels)) as u32;
+            let _err = (*render_client).ReleaseBuffer(written_count, 0);
+            let _err = (*device.audio_client_ptr).Start();
+
+            /*
+            std::thread::spawn(move || {
+                if written_count >= buffer_frame_count {
+                    loop {
+                        WaitForSingleObjectEx(handle, 0xFFFFFFFF, FALSE);
+                        let mut padding: u32 = 0;
+                        let _err = (*device.audio_client_ptr).GetCurrentPadding(&mut padding);
+                        let frame_count = buffer_frame_count - padding;
+                        if frame_count > 0 {
+                            let _err = (*render_client).GetBuffer(frame_count, &mut buffer_data);
+
+                            let written_count = match device.sample_format {
+                                Format::F32 => {
+                                    let buf_slice = std::slice::from_raw_parts_mut(buffer_data as *mut f32, (frame_count * u32::from((*device.waveformat_ptr).nChannels)) as _);
+                                    source.write_samples(buf_slice)
+                                },
+                                Format::I16 => {
+                                    todo!()
+                                },
+                            };
+
+                            let written_frames = (written_count / usize::from((*device.waveformat_ptr).nChannels)) as u32;
+                            let _err = (*render_client).ReleaseBuffer(written_frames, 0);
+
+                            if written_frames < frame_count {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                loop {
+                    WaitForSingleObjectEx(handle, 0xFFFFFFFF, FALSE);
+                    let mut padding: u32 = 0;
+                    let _err = (*device.audio_client_ptr).GetCurrentPadding(&mut padding);
+                    let frame_count = buffer_frame_count - padding;
+                    let _err = (*render_client).GetBuffer(frame_count, &mut buffer_data);
+                    let _err = (*render_client).ReleaseBuffer(frame_count, 2); // AUDCLNT_BUFFERFLAGS_SILENT
+                }
+            });
+            */
+
+            todo!()
         }
     }
 }
