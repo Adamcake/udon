@@ -1,4 +1,4 @@
-use crate::{Source, stream::Format};
+use crate::{Source, stream::{self, SampleFormat}};
 use std::{any, mem, ops, ptr, thread};
 use super::ffi::*;
 
@@ -74,11 +74,23 @@ impl<T> ops::Drop for IPtr<T> {
     }
 }
 
+pub struct Api;
+
+impl Api {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
 pub struct Device {
     audio_client: IPtr<IAudioClient>,
     sample_format: SampleFormat,
     wave_format: CoTaskMem<WAVEFORMATEX>,
 }
+
+// impl stream::DeviceImpl for Device {
+
+// }
 
 impl Device {
     pub fn default_output() -> Option<Self> {
@@ -99,6 +111,8 @@ impl Device {
                 (&mut enumerator.ptr) as *mut *mut _ as *mut LPVOID,
             );
 
+            // TODO: Check for DEVICE_STATE_NOTPRESENT or DEVICE_STATE_DISABLED or DEVICE_STATE_UNPLUGGED please
+            // like if not here, in the general iterator
             let mut device = IPtr::<IMMDevice>::null();
             let _err3 = enumerator.GetDefaultAudioEndpoint(eRender, eConsole, &mut device.ptr); // TODO: eConsole
 
@@ -121,13 +135,13 @@ impl Device {
             // TODO: What about *unsigned* 16-bit?
             let format_info = &*wave_format.0;
             let sample_format = match (format_info.wFormatTag, format_info.wBitsPerSample) {
-                (WAVE_FORMAT_PCM, 16) => Format::I16,
-                (WAVE_FORMAT_IEEE_FLOAT, 32) => Format::F32,
+                (WAVE_FORMAT_PCM, 16) => SampleFormat::I16,
+                (WAVE_FORMAT_IEEE_FLOAT, 32) => SampleFormat::F32,
                 (WAVE_FORMAT_EXTENSIBLE, bps) => {
                     let format_info_extended = &*(wave_format.0 as *mut WAVEFORMATEXTENSIBLE);
                     match (&format_info_extended.SubFormat, bps) {
-                        (x, 16) if x.eq(&KSDATAFORMAT_SUBTYPE_PCM) => Format::I16,
-                        (x, 32) if x.eq(&KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) => Format::F32,
+                        (x, 16) if x.eq(&KSDATAFORMAT_SUBTYPE_PCM) => SampleFormat::I16,
+                        (x, 32) if x.eq(&KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) => SampleFormat::F32,
                         _ => return None, // TODO: err
                     }
                 },
