@@ -1,4 +1,4 @@
-use crate::{Sample, Source};
+use crate::{Sample, source::Source};
 
 /// Implementation of a PQF resampler. Construct with: Resampler::new(source, source_rate, dest_rate)
 /// Once constructed, it will behave as a Source object which outputs samples at the target sample rate.

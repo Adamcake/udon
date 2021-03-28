@@ -3,16 +3,9 @@ mod error;
 pub mod mixer;
 pub mod resampler;
 pub mod source;
-mod stream;
+pub mod stream;
 #[cfg(feature = "wav")]
 pub mod wav;
-
-pub use buffer::Buffer;
-pub use error::Error;
-pub use mixer::Mixer;
-pub use resampler::Resampler;
-pub use source::Source;
-pub use stream::OutputStream;
 
 pub type Sample = f32;
 
@@ -31,7 +24,7 @@ impl Player {
     }
 }
 
-impl Source for Player {
+impl source::Source for Player {
     fn write_samples(&mut self, buffer: &mut [Sample]) -> usize {
         let old_offset = self.offset;
         self.offset += buffer.len();

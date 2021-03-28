@@ -1,4 +1,4 @@
-use crate::{Source, stream::{self, SampleFormat}};
+use crate::{source::Source, stream::{self, SampleFormat}};
 use std::{any, mem, ops, ptr, thread};
 use super::ffi::*;
 
