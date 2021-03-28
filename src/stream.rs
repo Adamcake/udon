@@ -1,8 +1,5 @@
-#[cfg(target_os = "windows")]
-mod win32;
-
-#[cfg(target_os = "windows")]
-pub use win32::{Device, OutputStream};
+#[cfg(all(target_os = "windows", feature = "wasapi"))]
+mod wasapi;
 
 #[derive(Debug)]
 pub enum Format {

@@ -117,9 +117,9 @@ impl Device {
             let sample_format = match (format_info.wFormatTag, format_info.wBitsPerSample) {
                 (WAVE_FORMAT_PCM, 16) => Format::I16,
                 (WAVE_FORMAT_IEEE_FLOAT, 32) => Format::F32,
-                (WAVE_FORMAT_EXTENSIBLE, bits) => {
+                (WAVE_FORMAT_EXTENSIBLE, bps) => {
                     let format_info_extended = &*(wave_format.0 as *mut WAVEFORMATEXTENSIBLE);
-                    match (&format_info_extended.SubFormat, bits) {
+                    match (&format_info_extended.SubFormat, bps) {
                         (x, 16) if x.eq(&KSDATAFORMAT_SUBTYPE_PCM) => Format::I16,
                         (x, 32) if x.eq(&KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) => Format::F32,
                         _ => return None, // TODO: err
