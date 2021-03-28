@@ -76,13 +76,19 @@ impl<T> ops::Drop for IPtr<T> {
 
 pub struct Device {
     audio_client: IPtr<IAudioClient>,
-    sample_format: Format, // TODO: rename to SampleFormat or anything
+    sample_format: SampleFormat,
     wave_format: CoTaskMem<WAVEFORMATEX>,
 }
 
 impl Device {
     pub fn default_output() -> Option<Self> {
         unsafe {
+            // TODO: "In Windows 8, the first use of IAudioClient
+            // to access the audio device should be on the STA thread.
+            // Calls from an MTA thread may result in undefined behavior."
+            //
+            // ^ WHAT
+
             let mut enumerator = IPtr::<IMMDeviceEnumerator>::null();
             let _err1 = CoInitializeEx(ptr::null_mut(), 0);
             let _err2 = CoCreateInstance(
