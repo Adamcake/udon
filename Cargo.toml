@@ -11,7 +11,3 @@ include = ["src/**/*", "Cargo.toml"]
 
 [features]
 wav = []
-
-[[bin]]
-name = "file_wav"
-required-features = ["wav"]
