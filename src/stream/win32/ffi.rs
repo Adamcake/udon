@@ -20,6 +20,8 @@ pub type __int64 = i64;
 pub type AUDCLNT_SHAREMODE = u32;
 pub type BOOL = c_int;
 pub type BYTE = c_uchar;
+pub type COINIT = u32;
+pub type COINITBASE = u32;
 pub type DWORD = c_ulong;
 pub type EDataFlow = u32;
 pub type ERole = u32;
@@ -46,8 +48,52 @@ pub type WORD = c_ushort;
 
 // Windows Constants
 pub const AUDCLNT_SHAREMODE_SHARED: AUDCLNT_SHAREMODE = 0;
+pub const COINIT_MULTITHREADED: COINIT = COINITBASE_MULTITHREADED;
+pub const COINITBASE_MULTITHREADED: COINITBASE = 0;
+pub const eConsole: ERole = 0;
+pub const eRender: EDataFlow = 0;
 pub const FALSE: BOOL = 0;
 pub const TRUE: BOOL = 0;
+pub const WAVE_FORMAT_IEEE_FLOAT: WORD = 0x0003;
+pub const WAVE_FORMAT_PCM: WORD = 0x0001;
+pub const WAVE_FORMAT_EXTENSIBLE: WORD = 0xFFFE;
+
+pub const CLSID_MMDeviceEnumerator: GUID = GUID {
+    data1: 0xBCDE0395,
+    data2: 0xE52F,
+    data3: 0x467C,
+    data4: [0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E],
+};
+pub const IID_IMMDeviceEnumerator: GUID = GUID {
+    data1: 0xA95664D2,
+    data2: 0x9614,
+    data3: 0x4F35,
+    data4: [0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6],
+};
+pub const IID_IAudioClient: GUID = GUID {
+    data1: 0x1CB9AD4C,
+    data2: 0xDBFA,
+    data3: 0x4c32,
+    data4: [0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2],
+};
+pub const IID_IAudioRenderClient: GUID = GUID {
+    data1: 0xf294acfc,
+    data2: 0x3146,
+    data3: 0x4483,
+    data4: [0xa7, 0xbf, 0xad, 0xdc, 0xa7, 0xc2, 0x60, 0xe2],
+};
+pub const KSDATAFORMAT_SUBTYPE_PCM: GUID = GUID {
+    data1: 1,
+    data2: 0,
+    data3: 16,
+    data4: [128, 0, 0, 170, 0, 56, 155, 113],
+};
+pub const KSDATAFORMAT_SUBTYPE_IEEE_FLOAT: GUID = GUID {
+    data1: 3,
+    data2: 0,
+    data3: 16,
+    data4: [128, 0, 0, 170, 0, 56, 155, 113],
+};
 
 // Windows Structs & Unions
 #[repr(C)]
@@ -116,6 +162,7 @@ extern "system" {
         riid: REFIID,
         ppv: *mut LPVOID,
     ) -> HRESULT;
+    pub fn CoTaskMemFree(pv: LPVOID);
 }
 
 // Windows COM Interfaces
@@ -167,6 +214,8 @@ macro_rules! com_interface {
                     }
                 }
             }
+
+            unsafe impl Send for $name {}
         )*
     };
 }
