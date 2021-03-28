@@ -43,7 +43,7 @@ macro_rules! backends {
             pub fn default() -> Self {
                 // TODO: Don't be stupid, and also document what the defaults are
                 // Defaults shouldn't change with feature switches because that's non-additive
-                Self::new(Backend::WASAPI).expect("no backends available (enable them via cargo features)")
+                Self::new(Backend::Wasapi).expect("no backends available (enable them via cargo features)")
             }
         }
 
@@ -95,7 +95,7 @@ macro_rules! backends {
 
 backends! {
     /// Windows Audio Session API
-    mod wasapi => WASAPI if all(target_os = "windows", feature = "wasapi"),
+    mod wasapi => Wasapi if all(target_os = "windows", feature = "wasapi"),
 }
 
 #[derive(Debug)]

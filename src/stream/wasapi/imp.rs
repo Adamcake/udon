@@ -82,7 +82,7 @@ impl Api {
     }
 
     pub fn default_output_device(&self) -> Option<stream::Device> {
-        Device::default_output().map(|dev| stream::Device(stream::DeviceImpl::WASAPI(dev)))
+        Device::default_output().map(|dev| stream::Device(stream::DeviceImpl::Wasapi(dev)))
     }
 }
 
