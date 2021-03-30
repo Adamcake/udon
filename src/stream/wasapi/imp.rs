@@ -5,105 +5,11 @@ use super::ffi::*;
 
 const CLSCTX_ALL: u32 = 23; // (CLSCTX_INPROC_SERVER | CLSCTX_INPROC_HANDLER | CLSCTX_LOCAL_SERVER | CLSCTX_REMOTE_SERVER)
 
-struct CoTaskMem<T>(*mut T);
-
-unsafe impl<T> Send for CoTaskMem<T> {}
-
-impl<T> ops::Drop for CoTaskMem<T> {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            CoTaskMemFree(self.0 as LPVOID);
-        }
-    }
-}
-
-struct IPtr<T> {
-    ptr: *mut T,
-}
-
-unsafe impl<T> Send for IPtr<T> {}
-
-impl<T> IPtr<T> {
-    fn new(ptr: *mut T) -> Self {
-        Self { ptr }
-    }
-
-    fn null() -> Self {
-        Self {
-            ptr: ptr::null_mut(),
-        }
-    }
-}
-
-impl<T> ops::Deref for IPtr<T> {
-    type Target = T;
-
-    #[cfg_attr(not(debug_assertions), inline(always))]
-    fn deref(&self) -> &Self::Target {
-        #[cfg(debug_assertions)]
-        if !self.ptr.is_null() {
-            unsafe { &*self.ptr }
-        } else {
-            panic!("{} deref when null", any::type_name::<Self>());
-        }
-        #[cfg(not(debug_assertions))]
-        unsafe { &*self.ptr }
-    }
-}
-
-impl<T> ops::DerefMut for IPtr<T> {
-    #[cfg_attr(not(debug_assertions), inline(always))]
-    fn deref_mut(&mut self) -> &mut <Self as ops::Deref>::Target {
-        #[cfg(debug_assertions)]
-        if !self.ptr.is_null() {
-            unsafe { &mut *self.ptr }
-        } else {
-            panic!("{} deref-mut when null", any::type_name::<Self>());
-        }
-        #[cfg(not(debug_assertions))]
-        unsafe { &mut *self.ptr }
-    }
-}
-
-impl<T> ops::Drop for IPtr<T> {
-    #[inline]
-    fn drop(&mut self) {
-        if !self.ptr.is_null() {
-            unsafe { ptr::drop_in_place(self.ptr) }
-        }
-    }
-}
-
-pub struct Api;
-
-impl Api {
-    pub fn new() -> Self {
-        Self
-    }
-
-    pub fn default_output_device(&self) -> Option<stream::Device> {
-        Device::default_output().map(|dev| stream::Device(stream::DeviceImpl::Wasapi(dev)))
-    }
-
-    pub fn open_output_stream(
-        &self,
-        device: stream::Device,
-        source: impl Source + Send + 'static,
-    ) -> Result<stream::OutputStream, Error> {
-        OutputStream::new(device, source)
-    }
-}
-
 pub struct Device {
     audio_client: IPtr<IAudioClient>,
     sample_format: SampleFormat,
     wave_format: CoTaskMem<WAVEFORMATEX>,
 }
-
-// impl stream::DeviceImpl for Device {
-
-// }
 
 impl Device {
     pub fn default_output() -> Option<Self> {
@@ -297,5 +203,25 @@ impl OutputStream {
         });
 
         Ok(Self {})
+    }
+}
+
+pub struct Session;
+
+impl Session {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn default_output_device(&self) -> Option<stream::Device> {
+        Device::default_output().map(|dev| stream::Device(stream::DeviceImpl::Wasapi(dev)))
+    }
+
+    pub fn open_output_stream(
+        &self,
+        device: stream::Device,
+        source: impl Source + Send + 'static,
+    ) -> Result<stream::OutputStream, Error> {
+        OutputStream::new(device, source)
     }
 }

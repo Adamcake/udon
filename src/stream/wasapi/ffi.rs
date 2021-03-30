@@ -299,3 +299,75 @@ com_interface! {
         fn ReleaseBuffer(NumFramesWritten: UINT32, dwFlags: DWORD) -> HRESULT;
     }
 }
+
+// Non-bindings - binding helpers
+
+pub struct CoTaskMem<T>(pub *mut T);
+
+unsafe impl<T> Send for CoTaskMem<T> {}
+
+impl<T> core::ops::Drop for CoTaskMem<T> {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            CoTaskMemFree(self.0 as LPVOID);
+        }
+    }
+}
+
+pub struct IPtr<T> {
+    pub ptr: *mut T,
+}
+
+unsafe impl<T> Send for IPtr<T> {}
+
+impl<T> IPtr<T> {
+    pub fn new(ptr: *mut T) -> Self {
+        Self { ptr }
+    }
+
+    pub fn null() -> Self {
+        Self {
+            ptr: core::ptr::null_mut(),
+        }
+    }
+}
+
+impl<T> core::ops::Deref for IPtr<T> {
+    type Target = T;
+
+    #[cfg_attr(not(debug_assertions), inline(always))]
+    fn deref(&self) -> &Self::Target {
+        #[cfg(debug_assertions)]
+        if !self.ptr.is_null() {
+            unsafe { &*self.ptr }
+        } else {
+            panic!("{} deref when null", core::any::type_name::<Self>());
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe { &*self.ptr }
+    }
+}
+
+impl<T> core::ops::DerefMut for IPtr<T> {
+    #[cfg_attr(not(debug_assertions), inline(always))]
+    fn deref_mut(&mut self) -> &mut <Self as core::ops::Deref>::Target {
+        #[cfg(debug_assertions)]
+        if !self.ptr.is_null() {
+            unsafe { &mut *self.ptr }
+        } else {
+            panic!("{} deref-mut when null", core::any::type_name::<Self>());
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe { &mut *self.ptr }
+    }
+}
+
+impl<T> core::ops::Drop for IPtr<T> {
+    #[inline]
+    fn drop(&mut self) {
+        if !self.ptr.is_null() {
+            unsafe { core::ptr::drop_in_place(self.ptr) }
+        }
+    }
+}
