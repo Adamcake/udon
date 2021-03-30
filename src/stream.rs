@@ -16,7 +16,7 @@ macro_rules! backends {
         )*
 
         #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-        pub enum Backend {
+        pub enum Api {
             $(
                 $(#[$outer])*
                 $variant
@@ -47,8 +47,7 @@ macro_rules! backends {
             ),*
         }
 
-
-        /// Represents a native API to request devices and streams from.
+        /// Represents an audio session within a native API.
         pub struct Session(pub(crate) SessionImpl);
 
         pub(crate) enum SessionImpl {
@@ -61,10 +60,10 @@ macro_rules! backends {
 
         impl Session {
             /// Creates an API handle for the selected backend, if available.
-            pub fn new(backend: Backend) -> Option<Self> {
+            pub fn new(backend: Api) -> Option<Self> {
                 match backend {
                     $(
-                        Backend::$variant => {
+                        Api::$variant => {
                             #[cfg($cfg)]
                             { Some(Self(SessionImpl::$variant($name::Session::new()))) }
                             #[cfg(not($cfg))]
@@ -75,10 +74,10 @@ macro_rules! backends {
             }
 
             /// Creates an API handle for the default backend.
-            pub fn default() -> Self {
+            pub fn system_default() -> Self {
                 // TODO: Don't be stupid, and also document what the defaults are
                 // Defaults shouldn't change with feature switches because that's non-additive
-                Self::new(Backend::Wasapi).expect("no backends available (enable them via cargo features)")
+                Self::new(Api::Wasapi).expect("no backends available (enable them via cargo features)")
             }
         }
 
