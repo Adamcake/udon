@@ -1,7 +1,7 @@
 #![allow(bad_style, dead_code)]
 
 // C Types
-use core::ffi::c_void;
+pub use core::ffi::c_void;
 pub type c_char = i8;
 pub type c_schar = i8;
 pub type c_uchar = u8;
@@ -17,6 +17,7 @@ pub type wchar_t = u16;
 
 // Windows Types
 pub type __int64 = i64;
+pub type AUDCLNT_BUFFERFLAGS = u32;
 pub type AUDCLNT_SHAREMODE = u32;
 pub type BOOL = c_int;
 pub type BYTE = c_uchar;
@@ -47,12 +48,15 @@ pub type WCHAR = wchar_t;
 pub type WORD = c_ushort;
 
 // Windows Constants
+pub const AUDCLNT_BUFFERFLAGS_SILENT: AUDCLNT_BUFFERFLAGS = 2;
 pub const AUDCLNT_SHAREMODE_SHARED: AUDCLNT_SHAREMODE = 0;
+pub const AUDCLNT_STREAMFLAGS_EVENTCALLBACK: DWORD = 0x00040000;
 pub const COINIT_MULTITHREADED: COINIT = COINITBASE_MULTITHREADED;
 pub const COINITBASE_MULTITHREADED: COINITBASE = 0;
 pub const eConsole: ERole = 0;
 pub const eRender: EDataFlow = 0;
 pub const FALSE: BOOL = 0;
+pub const INFINITE: DWORD = 0xFFFFFFFF;
 pub const TRUE: BOOL = 0;
 pub const WAVE_FORMAT_IEEE_FLOAT: WORD = 0x0003;
 pub const WAVE_FORMAT_PCM: WORD = 0x0001;
@@ -97,7 +101,7 @@ pub const KSDATAFORMAT_SUBTYPE_IEEE_FLOAT: GUID = GUID {
 
 // Windows Structs & Unions
 #[repr(C)]
-#[derive(Eq, PartialEq)]
+#[derive(Debug,Eq, PartialEq)]
 pub struct GUID {
     pub data1: c_ulong,
     pub data2: c_ushort,
@@ -110,6 +114,7 @@ pub struct PROPERTYKEY {
     pid: DWORD,
 }
 #[repr(C)]
+#[derive(Debug)]
 pub struct WAVEFORMATEX {
     pub wFormatTag: WORD,
     pub nChannels: WORD,
@@ -150,6 +155,8 @@ extern "system" {
         bInitialState: BOOL,
         lpName: LPCWSTR
     ) -> HANDLE;
+    pub fn GetCurrentThread() -> HANDLE;
+    pub fn SetThreadPriority(hThread: HANDLE, nPriority: c_int) -> BOOL;
     pub fn WaitForSingleObjectEx(hHandle: HANDLE, dwMilliseconds: DWORD, bAlertable: BOOL) -> DWORD;
 }
 #[link(name = "Ole32")]

@@ -1,5 +1,6 @@
-use crate::{source::Source, stream::{self, SampleFormat}};
-use std::{any, mem, ops, ptr, thread};
+use crate::{error::Error, source::Source, stream::{self, SampleFormat}};
+use std::{any, mem, ops, ptr, slice, sync::atomic::{self, AtomicBool}, thread};
+
 use super::ffi::*;
 
 const CLSCTX_ALL: u32 = 23; // (CLSCTX_INPROC_SERVER | CLSCTX_INPROC_HANDLER | CLSCTX_LOCAL_SERVER | CLSCTX_REMOTE_SERVER)
@@ -84,6 +85,14 @@ impl Api {
     pub fn default_output_device(&self) -> Option<stream::Device> {
         Device::default_output().map(|dev| stream::Device(stream::DeviceImpl::Wasapi(dev)))
     }
+
+    pub fn open_output_stream(
+        &self,
+        device: stream::Device,
+        source: impl Source + Send + 'static,
+    ) -> Result<stream::OutputStream, Error> {
+        OutputStream::new(device, source)
+    }
 }
 
 pub struct Device {
@@ -129,12 +138,9 @@ impl Device {
                 (&mut audio_client.ptr) as *mut *mut IAudioClient as *mut LPVOID,
             );
 
-            let mut default_period: REFERENCE_TIME = 0;
-            let mut min_period: REFERENCE_TIME = 0;
-            let _err5 = audio_client.GetDevicePeriod(&mut default_period, &mut min_period);
-
             let mut wave_format = CoTaskMem::<WAVEFORMATEX>(ptr::null_mut());
             let _err6 = audio_client.GetMixFormat(&mut wave_format.0);
+            println!("{:?}", &*wave_format.0);
 
             // TODO: What about *unsigned* 16-bit?
             let format_info = &*wave_format.0;
@@ -163,76 +169,133 @@ impl Device {
 
 
 pub struct OutputStream {
+    //kill_switch: AtomicBool,
+}
 
+unsafe fn write_source(
+    format: SampleFormat,
+    buffer: *mut u8,
+    sample_count: usize,
+    source: &mut dyn Source,
+) -> usize {
+    match format {
+        SampleFormat::I16 => todo!(), // TODO: big
+        SampleFormat::F32 => {
+            let buf = slice::from_raw_parts_mut(buffer as *mut f32, sample_count);
+            source.write_samples(buf)
+        },
+    }
 }
 
 impl OutputStream {
-    pub fn new(mut device: Device, mut source: impl Source + Send + 'static) -> Self {
+    pub fn new(device: stream::Device, source: impl Source + Send + 'static) -> Result<stream::OutputStream, Error> {
+        #[allow(irrefutable_let_patterns)] // TODO: yeah only wasapi right now
         unsafe {
-            let handle = CreateEventW(ptr::null_mut(), 0, 0, ptr::null());
-            let _err = device.audio_client.SetEventHandle(handle);
-            let mut buffer_frame_count: u32 = 0;
-            let _err = device.audio_client.GetBufferSize(&mut buffer_frame_count);
-            let mut render_client: *mut IAudioRenderClient = ptr::null_mut();
-            let _err = device.audio_client.GetService((&IID_IAudioRenderClient) as *const GUID as _, (&mut render_client) as *mut *mut IAudioRenderClient as _);
-            let mut buffer_data: *mut u8 = ptr::null_mut();
-            let _err = (*render_client).GetBuffer(buffer_frame_count, &mut buffer_data);
+            if let stream::Device(stream::DeviceImpl::Wasapi(device)) = device {
+                // TODO: `Box::try_new` once `allocator_api` hits
+                Self::new_(device, Box::new(source)).map(|x| stream::OutputStream(stream::OutputStreamImpl::Wasapi(x)))
+            } else {
+                todo!("piss off");
+            }
+        }
+    }
 
-            let written_count = match device.sample_format {
-                SampleFormat::F32 => {
-                    let buf_slice = std::slice::from_raw_parts_mut(buffer_data as *mut f32, (buffer_frame_count * u32::from((*device.wave_format.0).nChannels)) as _);
-                    source.write_samples(buf_slice)
-                },
-                SampleFormat::I16 => {
-                    todo!()
-                },
-            };
+    unsafe fn new_(mut device: Device, mut source: Box<dyn Source + Send + 'static>) -> Result<Self, Error> {
+        let mut default_period: REFERENCE_TIME = 0;
+        let mut min_period: REFERENCE_TIME = 0;
+        let _err_minus1 = device.audio_client.GetDevicePeriod(&mut default_period, &mut min_period);
 
-            let written_count = (written_count / usize::from((*device.wave_format.0).nChannels)) as u32;
-            let _err = (*render_client).ReleaseBuffer(written_count, 0);
-            let _err = device.audio_client.Start();
+        // initialize audio client
+        let _err0 = device.audio_client.Initialize(
+            AUDCLNT_SHAREMODE_SHARED,
+            AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+            0, // not in exclusive mode
+            default_period,
+            device.wave_format.0,
+            ptr::null_mut(),
+        );
+        // create a nameless handle for audio render events, defaulted to non-signaled
+        let event_handle = CreateEventW(ptr::null_mut(), FALSE, FALSE, ptr::null());
+        if event_handle.is_null() {
+            panic!(); // TODO:
+        }
+        let _err2 = device.audio_client.SetEventHandle(event_handle);
 
-            /*
-            thread::spawn(move || {
-                if written_count >= buffer_frame_count {
-                    loop {
-                        WaitForSingleObjectEx(handle, 0xFFFFFFFF, FALSE);
-                        let mut padding: u32 = 0;
-                        let _err = device.audio_client.GetCurrentPadding(&mut padding);
-                        let frame_count = buffer_frame_count - padding;
-                        if frame_count > 0 {
-                            let _err = (*render_client).GetBuffer(frame_count, &mut buffer_data);
+        let mut buffer_frame_count: UINT32 = 0;
+        let _err3 = device.audio_client.GetBufferSize(&mut buffer_frame_count);
 
-                            let written_count = match device.sample_format {
-                                SampleFormat::F32 => {
-                                    let buf_slice = std::slice::from_raw_parts_mut(buffer_data as *mut f32, (frame_count * u32::from((*device.wave_format.0).nChannels)) as _);
-                                    source.write_samples(buf_slice)
-                                },
-                                SampleFormat::I16 => {
-                                    todo!()
-                                },
-                            };
+        let mut render_client = IPtr::<IAudioRenderClient>::null();
+        let _err4 = device.audio_client.GetService(
+            &IID_IAudioRenderClient,
+            &mut render_client.ptr as *mut *mut _ as *mut *mut c_void,
+        );
 
-                            let written_frames = (written_count / usize::from((*device.wave_format.0).nChannels)) as u32;
-                            let _err = (*render_client).ReleaseBuffer(written_frames, 0);
+        println!("ERR4: {}", _err4);
 
-                            if written_frames < frame_count {
-                                break;
-                            }
+        // immediately write first chunk
+        let mut buffer_data: *mut BYTE = ptr::null_mut();
+        let _err5 = render_client.GetBuffer(buffer_frame_count, &mut buffer_data);
+
+        let samples_to_write = (buffer_frame_count * UINT32::from((*device.wave_format.0).nChannels)) as usize;
+        let samples_written = write_source(device.sample_format, buffer_data, samples_to_write, source.as_mut());
+        let samples_written = (samples_written / (*device.wave_format.0).nChannels as usize) as UINT32;
+        let _err6 = render_client.ReleaseBuffer(samples_written, 0);
+        let _err7 = device.audio_client.Start();
+
+        struct OutputStreamThreadData {
+            buffer_frame_count: UINT32,
+            device: Device,
+            event_handle: HANDLE,
+            samples_written: UINT32,
+        }
+
+        let data = OutputStreamThreadData {
+            buffer_frame_count,
+            event_handle,
+            device,
+            samples_written,
+        };
+
+        unsafe impl Send for OutputStreamThreadData {}
+        let thread = thread::spawn(move || {
+            // TODO: Maybe a bit too much, but it makes `loop {}` based testing nice :)
+            SetThreadPriority(GetCurrentThread(), 15);
+
+            let OutputStreamThreadData { buffer_frame_count, mut device, event_handle, samples_written } = data;
+            if samples_written >= buffer_frame_count {
+                loop {
+                    let _err8 = WaitForSingleObjectEx(event_handle, INFINITE, FALSE);
+
+                    let mut padding: UINT32 = 0;
+                    let _err9 = device.audio_client.GetCurrentPadding(&mut padding);
+                    let frame_count = buffer_frame_count - padding;
+
+                    if frame_count > 0 {
+                        let mut buffer_data: *mut BYTE = ptr::null_mut();
+                        let _err10 = render_client.GetBuffer(frame_count, &mut buffer_data);
+                        let samples_to_write = (frame_count * u32::from((*device.wave_format.0).nChannels)) as usize;
+                        let frames_written = write_source(device.sample_format, buffer_data, samples_to_write, source.as_mut());
+                        let frames_written = (frames_written / (*device.wave_format.0).nChannels as usize) as UINT32;
+
+                        let _err11 = render_client.ReleaseBuffer(frames_written, 0);
+                        if frames_written < frame_count {
+                            break
                         }
                     }
                 }
+            }
 
-                loop {
-                    WaitForSingleObjectEx(handle, 0xFFFFFFFF, FALSE);
-                    let mut padding: u32 = 0;
-                    let _err = device.audio_client.GetCurrentPadding(&mut padding);
-                    let frame_count = buffer_frame_count - padding;
-                    let _err = (*render_client).GetBuffer(frame_count, &mut buffer_data);
-                    let _err = (*render_client).ReleaseBuffer(frame_count, 2); // AUDCLNT_BUFFERFLAGS_SILENT
-                }
-            });*/
-            todo!()
-        }
+            loop {
+                let _err12 = WaitForSingleObjectEx(event_handle, INFINITE, FALSE);
+                let mut padding: UINT32 = 0;
+                let _err13 = device.audio_client.GetCurrentPadding(&mut padding);
+                let frame_count = buffer_frame_count - padding;
+                let mut buffer_data: *mut BYTE = ptr::null_mut();
+                let _err14 = render_client.GetBuffer(frame_count, &mut buffer_data);
+                let _err15 = render_client.ReleaseBuffer(frame_count, AUDCLNT_BUFFERFLAGS_SILENT);
+            }
+        });
+
+        Ok(Self {})
     }
 }
