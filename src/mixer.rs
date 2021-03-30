@@ -1,4 +1,4 @@
-use crate::{Sample, source::Source};
+use crate::{source::{Sample, Source}};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 const INIT_CAPACITY: usize = 16;

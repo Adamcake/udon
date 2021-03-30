@@ -7,7 +7,7 @@ pub mod stream;
 #[cfg(feature = "wav")]
 pub mod wav;
 
-pub type Sample = f32;
+use crate::source::Sample;
 
 /// A basic sound-playing object. When fed to an output stream, will play the samples it contains until it has no more.
 /// If the samples have a different sample rate than the output stream, the output will sound sped up or slowed down.

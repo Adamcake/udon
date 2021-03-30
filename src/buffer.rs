@@ -1,4 +1,4 @@
-use crate::{Sample, source::Source};
+use crate::{source::{Sample, Source}};
 use std::{
     marker::PhantomData,
     sync::{Arc, Condvar, Mutex},
