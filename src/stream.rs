@@ -1,3 +1,5 @@
+use crate::{error::Error, source::Source};
+
 macro_rules! backends {
     (
         $(
@@ -50,6 +52,12 @@ macro_rules! backends {
         backend_wrap_fns! {
             impl Api(ApiImpl) <- $( $variant if $cfg ),* {
                 pub fn default_output_device(&self) -> Option<Device>;
+
+                pub fn open_output_stream(
+                    &self,
+                    device: Device,
+                    source: impl Source + Send + 'static,
+                ) -> Result<OutputStream, Error>;
             }
         }
 
@@ -85,6 +93,7 @@ macro_rules! backends {
         }
     };
 }
+
 macro_rules! backend_wrap_fns {
     (
         impl $target:ident ( $enum:ident ) <- $( $variant:ident if $cfg:meta ),* {
@@ -96,10 +105,9 @@ macro_rules! backend_wrap_fns {
         }
     };
     (
-        @wrap
-        $enum:ident ( $( $variant:ident if $cfg:meta ),* )
+        @wrap $enum:ident ( $( $variant:ident if $cfg:meta ),* )
         $(#[$fn_outer:meta])*
-        $v:vis fn $fn_name:ident ( & self $( , $arg_name:ident : $arg_ty:ty )* ) $( -> $ret:ty )? ;
+        $v:vis fn $fn_name:ident ( & self $( , $arg_name:ident : $arg_ty:ty )* $(,)? ) $( -> $ret:ty )? ;
         $( $rest:tt )*
     ) => {
         $(#[$fn_outer])*
@@ -114,9 +122,9 @@ macro_rules! backend_wrap_fns {
                 ),*
             }
         }
-        backend_wrap_fns!(@wrap $enum $($variant if $cfg),* $($rest)*);
+        backend_wrap_fns!(@wrap $enum ( $($variant if $cfg),* ) $($rest)*);
     };
-    ( @wrap $enum:ident $( $variant:ident if $cfg:meta ),* ) => {};
+    ( @wrap $enum:ident ( $( $variant:ident if $cfg:meta ),* ) ) => {};
 }
 
 backends! {
@@ -124,7 +132,7 @@ backends! {
     mod wasapi => Wasapi if all(target_os = "windows", feature = "wasapi"),
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum SampleFormat {
     // /// Unsigned 16-bit integer PCM
     // U16,
