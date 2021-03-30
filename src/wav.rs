@@ -1,4 +1,4 @@
-use super::Source;
+use crate::source::Source;
 use std::sync::Arc;
 
 /// A Source object for decoding and playing samples from a .wav file.
