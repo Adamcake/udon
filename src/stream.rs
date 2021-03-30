@@ -15,52 +15,6 @@ macro_rules! backends {
             mod $name;
         )*
 
-        /// Represents a native API to request devices and streams from.
-        pub struct Api(pub(crate) ApiImpl);
-
-        pub(crate) enum ApiImpl {
-            $(
-                #[cfg($cfg)]
-                $(#[$outer])*
-                $variant ( $name::Api )
-            ),*
-        }
-
-        impl Api {
-            /// Creates an API handle for the selected backend, if available.
-            pub fn new(backend: Backend) -> Option<Self> {
-                match backend {
-                    $(
-                        Backend::$variant => {
-                            #[cfg($cfg)]
-                            { Some(Self(ApiImpl::$variant($name::Api::new()))) }
-                            #[cfg(not($cfg))]
-                            { None }
-                        },
-                    )*
-                }
-            }
-
-            /// Creates an API handle for the default backend.
-            pub fn default() -> Self {
-                // TODO: Don't be stupid, and also document what the defaults are
-                // Defaults shouldn't change with feature switches because that's non-additive
-                Self::new(Backend::Wasapi).expect("no backends available (enable them via cargo features)")
-            }
-        }
-
-        backend_wrap_fns! {
-            impl Api(ApiImpl) <- $( $variant if $cfg ),* {
-                pub fn default_output_device(&self) -> Option<Device>;
-
-                pub fn open_output_stream(
-                    &self,
-                    device: Device,
-                    source: impl Source + Send + 'static,
-                ) -> Result<OutputStream, Error>;
-            }
-        }
-
         #[derive(Copy, Clone, Debug, Eq, PartialEq)]
         pub enum Backend {
             $(
@@ -82,6 +36,7 @@ macro_rules! backends {
             ),*
         }
 
+        /// Handle to an audio output stream.
         pub struct OutputStream(pub(crate) OutputStreamImpl);
 
         pub(crate) enum OutputStreamImpl {
@@ -90,6 +45,53 @@ macro_rules! backends {
                 $(#[$outer])*
                 $variant ( $name::OutputStream )
             ),*
+        }
+
+
+        /// Represents a native API to request devices and streams from.
+        pub struct Session(pub(crate) SessionImpl);
+
+        pub(crate) enum SessionImpl {
+            $(
+                #[cfg($cfg)]
+                $(#[$outer])*
+                $variant ( $name::Session )
+            ),*
+        }
+
+        impl Session {
+            /// Creates an API handle for the selected backend, if available.
+            pub fn new(backend: Backend) -> Option<Self> {
+                match backend {
+                    $(
+                        Backend::$variant => {
+                            #[cfg($cfg)]
+                            { Some(Self(SessionImpl::$variant($name::Session::new()))) }
+                            #[cfg(not($cfg))]
+                            { None }
+                        },
+                    )*
+                }
+            }
+
+            /// Creates an API handle for the default backend.
+            pub fn default() -> Self {
+                // TODO: Don't be stupid, and also document what the defaults are
+                // Defaults shouldn't change with feature switches because that's non-additive
+                Self::new(Backend::Wasapi).expect("no backends available (enable them via cargo features)")
+            }
+        }
+
+        backend_wrap_fns! {
+            impl Session(SessionImpl) <- $( $variant if $cfg ),* {
+                pub fn default_output_device(&self) -> Option<Device>;
+
+                pub fn open_output_stream(
+                    &self,
+                    device: Device,
+                    source: impl Source + Send + 'static,
+                ) -> Result<OutputStream, Error>;
+            }
         }
     };
 }
@@ -137,9 +139,9 @@ pub enum SampleFormat {
     // /// Unsigned 16-bit integer PCM
     // U16,
 
-    // Signed 16-bit integer PCM
+    /// Signed 16-bit integer PCM
     I16,
 
-    // IEEE single-precision float PCM
+    /// IEEE 754 32-bit float PCM
     F32,
 }
