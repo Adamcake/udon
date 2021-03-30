@@ -200,6 +200,9 @@ impl OutputStream {
                 let _err14 = render_client.GetBuffer(frame_count, &mut buffer_data);
                 let _err15 = render_client.ReleaseBuffer(frame_count, AUDCLNT_BUFFERFLAGS_SILENT);
             }
+
+            // TODO: do this!
+            // CloseHandle(event_handle);
         });
 
         Ok(Self {})

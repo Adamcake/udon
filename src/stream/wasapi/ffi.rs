@@ -155,9 +155,11 @@ extern "system" {
         bInitialState: BOOL,
         lpName: LPCWSTR
     ) -> HANDLE;
+    pub fn CloseHandle(hObject: HANDLE) -> BOOL;
+    pub fn WaitForSingleObjectEx(hHandle: HANDLE, dwMilliseconds: DWORD, bAlertable: BOOL) -> DWORD;
+
     pub fn GetCurrentThread() -> HANDLE;
     pub fn SetThreadPriority(hThread: HANDLE, nPriority: c_int) -> BOOL;
-    pub fn WaitForSingleObjectEx(hHandle: HANDLE, dwMilliseconds: DWORD, bAlertable: BOOL) -> DWORD;
 }
 #[link(name = "Ole32")]
 extern "system" {
