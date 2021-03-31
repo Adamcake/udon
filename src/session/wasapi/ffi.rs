@@ -113,8 +113,7 @@ pub struct PROPERTYKEY {
     fmtid: GUID,
     pid: DWORD,
 }
-#[repr(C)]
-#[derive(Debug)]
+#[repr(C, packed)]
 pub struct WAVEFORMATEX {
     pub wFormatTag: WORD,
     pub nChannels: WORD,
@@ -124,7 +123,7 @@ pub struct WAVEFORMATEX {
     pub wBitsPerSample: WORD,
     pub cbSize: WORD,
 }
-#[repr(C)]
+#[repr(C, packed)]
 pub struct WAVEFORMATEXTENSIBLE {
     pub Format: WAVEFORMATEX,
     pub Samples: WAVEFORMATEXTENSIBLE_Samples,

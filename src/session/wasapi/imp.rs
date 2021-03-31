@@ -46,7 +46,6 @@ impl Device {
 
             let mut wave_format = CoTaskMem::<WAVEFORMATEX>(ptr::null_mut());
             let _err6 = audio_client.GetMixFormat(&mut wave_format.0);
-            println!("{:?}", &*wave_format.0);
 
             // TODO: What about *unsigned* 16-bit?
             let format_info = &*wave_format.0;
