@@ -15,6 +15,7 @@ macro_rules! backends {
             mod $name;
         )*
 
+        /// Represents a native API to create [`Session`] instances in.
         #[derive(Copy, Clone, Debug, Eq, PartialEq)]
         pub enum Api {
             $(
@@ -59,25 +60,18 @@ macro_rules! backends {
         }
 
         impl Session {
-            /// Creates an API handle for the selected backend, if available.
-            pub fn new(backend: Api) -> Option<Self> {
+            /// Creates an audio `Session` within the given API.
+            pub fn new(backend: Api) -> Result<Self, Error> {
                 match backend {
                     $(
                         Api::$variant => {
                             #[cfg($cfg)]
-                            { Some(Self(SessionImpl::$variant($name::Session::new()))) }
+                            { $name::Session::new().map(|x| Self(SessionImpl::$variant(x))) }
                             #[cfg(not($cfg))]
-                            { None }
+                            { Err(Error::ApiNotAvailable) }
                         },
                     )*
                 }
-            }
-
-            /// Creates an API handle for the default backend.
-            pub fn system_default() -> Self {
-                // TODO: Don't be stupid, and also document what the defaults are
-                // Defaults shouldn't change with feature switches because that's non-additive
-                Self::new(Api::Wasapi).expect("no backends available (enable them via cargo features)")
             }
         }
 

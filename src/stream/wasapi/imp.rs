@@ -212,8 +212,8 @@ impl OutputStream {
 pub struct Session;
 
 impl Session {
-    pub fn new() -> Self {
-        Self
+    pub fn new() -> Result<Self, Error> {
+        Ok(Self)
     }
 
     pub fn default_output_device(&self) -> Option<stream::Device> {
