@@ -25,7 +25,7 @@ macro_rules! backends {
 
         /// Handle to an audio input/output device.
         ///
-        /// To acquire a [`Device`], request one from an [`Api`].
+        /// To acquire a [`Device`], request one from a [`Session`].
         pub struct Device(pub(crate) DeviceImpl);
 
         pub(crate) enum DeviceImpl {
