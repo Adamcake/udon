@@ -1,4 +1,4 @@
-use crate::{error::Error, source::Source, stream::{self, SampleFormat}};
+use crate::{error::Error, source::Source, session::{self, SampleFormat}};
 use std::{any, mem, ops, ptr, slice, sync::atomic::{self, AtomicBool}, thread};
 
 use super::ffi::*;
@@ -94,12 +94,12 @@ unsafe fn write_source(
 }
 
 impl OutputStream {
-    pub fn new(device: stream::Device, source: impl Source + Send + 'static) -> Result<stream::OutputStream, Error> {
+    pub fn new(device: session::Device, source: impl Source + Send + 'static) -> Result<session::OutputStream, Error> {
         #[allow(irrefutable_let_patterns)] // TODO: yeah only wasapi right now
         unsafe {
-            if let stream::Device(stream::DeviceImpl::Wasapi(device)) = device {
+            if let session::Device(session::DeviceImpl::Wasapi(device)) = device {
                 // TODO: `Box::try_new` once `allocator_api` hits
-                Self::new_(device, Box::new(source)).map(|x| stream::OutputStream(stream::OutputStreamImpl::Wasapi(x)))
+                Self::new_(device, Box::new(source)).map(|x| session::OutputStream(session::OutputStreamImpl::Wasapi(x)))
             } else {
                 todo!("piss off");
             }
@@ -216,15 +216,15 @@ impl Session {
         Ok(Self)
     }
 
-    pub fn default_output_device(&self) -> Option<stream::Device> {
-        Device::default_output().map(|dev| stream::Device(stream::DeviceImpl::Wasapi(dev)))
+    pub fn default_output_device(&self) -> Option<session::Device> {
+        Device::default_output().map(|dev| session::Device(session::DeviceImpl::Wasapi(dev)))
     }
 
     pub fn open_output_stream(
         &self,
-        device: stream::Device,
+        device: session::Device,
         source: impl Source + Send + 'static,
-    ) -> Result<stream::OutputStream, Error> {
+    ) -> Result<session::OutputStream, Error> {
         OutputStream::new(device, source)
     }
 }

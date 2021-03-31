@@ -3,7 +3,8 @@ mod error;
 pub mod mixer;
 pub mod resampler;
 pub mod source;
-pub mod stream;
+pub mod session;
+
 #[cfg(feature = "wav")]
 pub mod wav;
 
