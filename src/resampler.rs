@@ -1,4 +1,4 @@
-use crate::{source::{Sample, Source}};
+use crate::source::{ChannelCount, Sample, SampleRate, Source};
 
 /// Implementation of a PQF resampler. Construct with: Resampler::new(source, source_rate, dest_rate)
 /// Once constructed, it will behave as a Source object which outputs samples at the target sample rate.
@@ -112,7 +112,7 @@ impl<S: Source> Resampler<S> {
             .collect::<Vec<_>>()
             .into_boxed_slice();
 
-        let filter_samples = ((kaiser_value_count + to as usize) / to as usize) * source.channel_count();
+        let filter_samples = ((kaiser_value_count + to as usize) / to as usize) * usize::from(source.channel_count().get());
         let mut filter_1 = Vec::with_capacity(filter_samples);
         let mut filter_2 = Vec::with_capacity(filter_samples);
 
@@ -149,10 +149,20 @@ impl<S: Source> Resampler<S> {
 }
 
 impl<S: Source> Source for Resampler<S> {
+    #[inline]
+    fn channel_count(&self) -> ChannelCount {
+        self.source.channel_count()
+    }
+
+    #[inline]
+    fn sample_rate(&self) -> SampleRate {
+        self.source.sample_rate()
+    }
+
     fn write_samples(&mut self, buffer: &mut [Sample]) -> usize {
         let from = u64::from(self.from);
         let to = u64::from(self.to);
-        let channels = self.source.channel_count();
+        let channels = usize::from(self.channel_count().get());
 
         for (i, s) in buffer.iter_mut().enumerate() {
             // Tells us which channel we're currently looking at in the output data.
@@ -239,9 +249,5 @@ impl<S: Source> Source for Resampler<S> {
         }
 
         buffer.len()
-    }
-
-    fn channel_count(&self) -> usize {
-        self.source.channel_count()
     }
 }

@@ -1,4 +1,4 @@
-use crate::source::Source;
+use crate::source::{ChannelCount, Sample, SampleRate, Source};
 use std::sync::Arc;
 
 /// A Source object for decoding and playing samples from a .wav file.
@@ -11,8 +11,8 @@ use std::sync::Arc;
 #[derive(Clone, Debug)]
 pub struct WavPlayer {
     file: Arc<[u8]>,
-    channels: usize,
-    sample_rate: usize,
+    channels: ChannelCount,
+    sample_rate: SampleRate,
     sample_bytes: usize,
     next_sample_offset: usize,
     format: Format,
@@ -51,6 +51,9 @@ impl WavPlayer {
         let channels = u16::from_le_bytes([file[22], file[23]]);
         let sample_rate = u32::from_le_bytes([file[24], file[25], file[26], file[27]]);
         let sample_bits = u16::from_le_bytes([file[34], file[35]]);
+
+        let channels = ChannelCount::new(channels).ok_or(Error::UnknownFormat)?;
+        let sample_rate = SampleRate::new(sample_rate).ok_or(Error::UnknownFormat)?;
 
         let mut data_start: usize = 36;
         let data_len = loop {
@@ -93,7 +96,7 @@ impl WavPlayer {
         Ok(Self {
             file: file.into(),
             channels: channels.into(),
-            sample_rate: sample_rate as usize,
+            sample_rate: sample_rate,
             sample_bytes,
             next_sample_offset: data_start,
             format,
@@ -105,15 +108,20 @@ impl WavPlayer {
     pub fn length(&self) -> usize {
         self.length
     }
-
-    /// Returns the sample rate of this wav file (eg. 44100)
-    pub fn sample_rate(&self) -> usize {
-        self.sample_rate
-    }
 }
 
 impl Source for WavPlayer {
-    fn write_samples(&mut self, buffer: &mut [f32]) -> usize {
+    #[inline]
+    fn channel_count(&self) -> ChannelCount {
+        self.channels
+    }
+
+    #[inline]
+    fn sample_rate(&self) -> SampleRate {
+        self.sample_rate
+    }
+
+    fn write_samples(&mut self, buffer: &mut [Sample]) -> usize {
         use std::convert::TryInto;
 
         if let Some(i) = self.file.get(self.next_sample_offset..) {
@@ -157,10 +165,6 @@ impl Source for WavPlayer {
         } else {
             0
         }
-    }
-
-    fn channel_count(&self) -> usize {
-        self.channels
     }
 }
 

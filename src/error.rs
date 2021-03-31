@@ -14,4 +14,6 @@ pub enum Error {
 
     /// Occurs if adding a new Stream ID would cause an integer overflow.
     StreamIdOverflow,
+
+    ApiNotAvailable,
 }

@@ -1,23 +1,30 @@
+use std::num::{NonZeroU16, NonZeroU32};
+
+pub type ChannelCount = NonZeroU16;
 pub type Sample = f32;
+pub type SampleRate = NonZeroU32;
 
-/// An audio source. Anything implementing this trait may be played to an output stream.
+/// Trait for a source of audio that outputs PCM at a given sample rate.
 pub trait Source {
-    /// Writes the next set of samples to an output buffer.
+    /// Returns the number of channels in this `Source`.
     ///
-    /// The Source object is expected to "remember" its progress through the sound it's playing,
-    /// such that it will continue where it left off on subsequent calls to this function.
-    ///
-    /// If the Source has multiple channels then the samples will be interleaved.
-    ///
-    /// Returns the number of samples which were written to the buffer. Values must be written contiguously from
-    /// the start of the buffer. A value lower than buffer.len() indicates the sound has ended. After that,
-    /// any further calls to this function will not write anything and will return 0.
-    fn write_samples(&mut self, buffer: &mut [Sample]) -> usize;
+    /// This function must always return the same value.
+    fn channel_count(&self) -> ChannelCount;
 
-    /// Returns the number of channels in this Source object's audio data.
+    /// Returns the sample rate the written data should be interpreted at.
     ///
-    /// This function must always return the same value. A Source object cannot ever change its channel count.
+    /// This function must always return the same value.
+    fn sample_rate(&self) -> SampleRate;
+
+    /// Writes the next set of samples to an output `buffer`.
     ///
-    /// A Source cannot have 0 channels. This function returning 0 is undefined.
-    fn channel_count(&self) -> usize;
+    /// The implementor is expected to "remember" its progress through the sound it's playing,
+    /// such that it must continue where it left off on subsequent calls to this function.
+    /// If there are multiple channels then the samples must be interleaved.
+    /// Values must be written contiguously from the start of the `buffer`.
+    ///
+    /// Returns the number of samples which were written to the `buffer`.
+    /// A value lower than `buffer.len()` indicates the sound has ended.
+    /// Any further calls to this function after that must not write anything and return 0.
+    fn write_samples(&mut self, buffer: &mut [Sample]) -> usize;
 }

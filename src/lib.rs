@@ -1,6 +1,6 @@
 pub mod buffer;
 mod error;
-pub mod mixer;
+// pub mod mixer;
 pub mod resampler;
 pub mod source;
 pub mod session;
@@ -8,24 +8,35 @@ pub mod session;
 #[cfg(feature = "wav")]
 pub mod wav;
 
-use crate::source::Sample;
+use crate::source::{ChannelCount, Sample, SampleRate, Source};
 
 /// A basic sound-playing object. When fed to an output stream, will play the samples it contains until it has no more.
 /// If the samples have a different sample rate than the output stream, the output will sound sped up or slowed down.
 /// Use a resampler (such as boop::resampler::Polyphase, or implement your own) to resample it at the correct rate.
 pub struct Player {
     samples: Box<[Sample]>,
-    channels: usize,
+    channels: ChannelCount,
+    sample_rate: SampleRate,
     offset: usize,
 }
 
 impl Player {
-    pub fn new(samples: Box<[Sample]>, channels: usize) -> Self {
-        Self { samples, channels, offset: 0 }
+    pub fn new(channels: ChannelCount, sample_rate: SampleRate, samples: Box<[Sample]>) -> Self {
+        Self { channels, sample_rate, samples, offset: 0 }
     }
 }
 
-impl source::Source for Player {
+impl Source for Player {
+    #[inline]
+    fn channel_count(&self) -> ChannelCount {
+        self.channels
+    }
+
+    #[inline]
+    fn sample_rate(&self) -> SampleRate {
+        self.sample_rate
+    }
+
     fn write_samples(&mut self, buffer: &mut [Sample]) -> usize {
         let old_offset = self.offset;
         self.offset += buffer.len();
@@ -38,9 +49,5 @@ impl source::Source for Player {
         } else {
             0
         }
-    }
-
-    fn channel_count(&self) -> usize {
-        self.channels
     }
 }
