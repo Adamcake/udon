@@ -121,9 +121,17 @@ macro_rules! backend_wrap_fns {
     };
     ( @wrap $enum:ident ( $( $variant:ident if $cfg:meta ),* ) ) => {};
 }
+macro_rules! session_wrap {
+    ($res:expr , $t:ident ( $t_impl:ident ) , $api:ident ) => {
+        { $ res }.map(|x| crate :: session :: $t ( crate :: session :: $t_impl :: $api ( x ) ) )
+    };
+}
 
 backends! {
-    /// Windows Audio Session API
+    /// Dummy API (no sound is played)
+    mod dummy => Dummy if not(target_pointer_width = "0"),
+
+    /// Windows Audio Session API (WASAPI)
     mod wasapi => Wasapi if all(target_os = "windows", feature = "wasapi"),
 }
 
