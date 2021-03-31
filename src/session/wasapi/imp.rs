@@ -99,7 +99,7 @@ impl OutputStream {
         unsafe {
             if let session::Device(session::DeviceImpl::Wasapi(device)) = device {
                 // TODO: `Box::try_new` once `allocator_api` hits
-                Self::new_(device, Box::new(source)).map(|x| session::OutputStream(session::OutputStreamImpl::Wasapi(x)))
+                session_wrap!(Self::new_(device, Box::new(source)), OutputStream(OutputStreamImpl), Wasapi)
             } else {
                 todo!("piss off");
             }
@@ -217,7 +217,7 @@ impl Session {
     }
 
     pub fn default_output_device(&self) -> Option<session::Device> {
-        Device::default_output().map(|dev| session::Device(session::DeviceImpl::Wasapi(dev)))
+        session_wrap!(Device::default_output(), Device(DeviceImpl), Wasapi)
     }
 
     pub fn open_output_stream(
