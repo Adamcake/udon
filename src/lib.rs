@@ -1,9 +1,10 @@
 pub mod buffer;
 mod error;
 pub mod mixer;
+pub mod rechanneler;
 pub mod resampler;
-pub mod source;
 pub mod session;
+pub mod source;
 
 #[cfg(feature = "wav")]
 pub mod wav;
