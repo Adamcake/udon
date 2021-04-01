@@ -1,4 +1,4 @@
-use crate::{error::Error, source::Source, session::{self, SampleFormat}};
+use crate::{error::Error, source::{ChannelCount, SampleRate, Source}, session::{self, SampleFormat}};
 use std::{any, mem, ops, ptr, slice, sync::atomic::{self, AtomicBool}, thread};
 
 use super::ffi::*;
@@ -8,7 +8,23 @@ const CLSCTX_ALL: u32 = 23; // (CLSCTX_INPROC_SERVER | CLSCTX_INPROC_HANDLER | C
 pub struct Device {
     audio_client: IPtr<IAudioClient>,
     sample_format: SampleFormat,
+
+    // Invariant: The channel count or sample rate must not be 0.
     wave_format: CoTaskMem<WAVEFORMATEX>,
+}
+
+impl Device {
+    pub fn channel_count(&self) -> ChannelCount {
+        unsafe {
+            ChannelCount::new_unchecked((&*(self.wave_format.0)).nChannels)
+        }
+    }
+
+    pub fn sample_rate(&self) -> SampleRate {
+        unsafe {
+            SampleRate::new_unchecked((&*(self.wave_format.0)).nSamplesPerSec)
+        }
+    }
 }
 
 impl Device {

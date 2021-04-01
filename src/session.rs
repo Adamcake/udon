@@ -1,4 +1,4 @@
-use crate::{error::Error, source::Source};
+use crate::{error::Error, source::{ChannelCount, SampleRate, Source}};
 
 macro_rules! backends {
     (
@@ -35,6 +35,13 @@ macro_rules! backends {
                 $(#[$outer])*
                 $variant ( $name::Device )
             ),*
+        }
+
+        backend_wrap_fns! {
+            impl Device(DeviceImpl) <- $( $variant if $cfg ),* {
+                pub fn channel_count(&self) -> ChannelCount;
+                pub fn sample_rate(&self) -> SampleRate;
+            }
         }
 
         /// Handle to an audio output stream.
