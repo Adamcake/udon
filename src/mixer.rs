@@ -1,4 +1,4 @@
-use crate::{Sample, source::Source};
+use crate::{Sample, source::{ChannelCount, SampleRate, Source}};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 const INIT_CAPACITY: usize = 16;
@@ -8,7 +8,8 @@ const INIT_CAPACITY: usize = 16;
 /// or any other place where a Source is expected.
 /// The MixerHandle is kept and used for dynamically adding Sources to the Mixer.
 pub struct Mixer {
-    channels: usize,
+    channels: ChannelCount,
+    sample_rate: SampleRate,
     sources: Vec<Box<dyn Source + Send + Sync>>,
     input_buffer: Vec<Sample>,
     receiver: Receiver<Box<dyn Source + Send + Sync + 'static>>,
@@ -27,11 +28,17 @@ pub enum Error {
 }
 
 impl Mixer {
-    /// Constructs a new Mixer and MixerHandle. `channels` is the number of channels wanted in the output data.
-    pub fn new(channels: usize) -> (Self, MixerHandle) {
+    /// Constructs a new Mixer and MixerHandle.
+    /// 
+    /// `Mixer` does not make any changes to the channel count or sample rate of its Sources. As such, it needs to know
+    /// its expected output rate and channel count on construction.
+    /// 
+    /// If Sources with a different sample rate or channel count than this are subsequently added to the Mixer,
+    /// they will sound wrong. For resampling and rechanneling, see `Resampler` and `Rechanneler`.
+    pub fn new(sample_rate: SampleRate, channels: ChannelCount) -> (Self, MixerHandle) {
         let (sender, receiver) = mpsc::channel();
         (
-            Self { channels, sources: Vec::with_capacity(INIT_CAPACITY), input_buffer: Vec::new(), receiver },
+            Self { channels, sample_rate, sources: Vec::with_capacity(INIT_CAPACITY), input_buffer: Vec::new(), receiver },
             MixerHandle(sender),
         )
     }
@@ -47,28 +54,13 @@ impl Source for Mixer {
         }
 
         let input_buffer = &mut self.input_buffer;
-        let output_channel_count = self.channels;
 
         self.sources.retain_mut(|source| {
-            let source_channel_count = source.channel_count();
-            input_buffer.resize_with(buffer.len() * source_channel_count / output_channel_count, Default::default);
+            input_buffer.resize_with(buffer.len(), Default::default);
             let count = source.write_samples(input_buffer);
 
-            if source_channel_count == output_channel_count {
-                // Firstly, if the input and output channel counts are the same, pass straight through.
-                for (in_sample, out_sample) in input_buffer.iter().take(count).copied().zip(buffer.iter_mut()) {
-                    *out_sample += in_sample;
-                }
-            } else if source_channel_count == 1 {
-                // Next, if the input is 1-channel, duplicate the next sample across all output channels.
-                for (in_sample, out_samples) in
-                    input_buffer.iter().take(count).copied().zip(buffer.chunks_exact_mut(output_channel_count))
-                {
-                    out_samples.iter_mut().for_each(|s| *s = in_sample);
-                }
-            } else {
-                // Different multi-channel counts. What do we do here!?
-                todo!("multi-channel mixing")
+            for (in_sample, out_sample) in input_buffer.iter().take(count).copied().zip(buffer.iter_mut()) {
+                *out_sample += in_sample;
             }
 
             count == input_buffer.len()
@@ -77,8 +69,12 @@ impl Source for Mixer {
         buffer.len()
     }
 
-    fn channel_count(&self) -> usize {
+    fn channel_count(&self) -> ChannelCount {
         self.channels
+    }
+
+    fn sample_rate(&self) -> SampleRate {
+        self.sample_rate
     }
 }
 

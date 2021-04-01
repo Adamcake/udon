@@ -1,6 +1,6 @@
 pub mod buffer;
 mod error;
-// pub mod mixer;
+pub mod mixer;
 pub mod resampler;
 pub mod source;
 pub mod session;
