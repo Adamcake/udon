@@ -9,6 +9,7 @@ where
     source: S,
     from: u32,
     to: u32,
+    dest_rate: SampleRate, // Actual output rate - different from `to` because that is scaled down by GCD
     left_offset: usize,
     kaiser_values: Box<[f64]>,
     filter_1: Box<[Sample]>,
@@ -31,10 +32,7 @@ where
 }
 
 impl<S: Source> Resampler<S> {
-    pub fn new(mut source: S, source_rate: u32, dest_rate: u32) -> Self {
-        assert!(source_rate != 0);
-        assert!(dest_rate != 0);
-
+    pub fn new(mut source: S, dest_rate: SampleRate) -> Self {
         #[inline]
         fn gcd(a: u32, b: u32) -> u32 {
             if b == 0 { a } else { gcd(b, a % b) }
@@ -96,9 +94,11 @@ impl<S: Source> Resampler<S> {
             ((65.0 - 7.95) / (2.285 * 2.0 * std::f64::consts::PI * transition_width)).ceil() as usize
         }
 
-        let gcd = gcd(source_rate, dest_rate);
-        let from = source_rate / gcd;
-        let to = dest_rate / gcd;
+        let src = u32::from(source.sample_rate());
+        let dst = u32::from(dest_rate);
+        let gcd = gcd(src, dst);
+        let from = src / gcd;
+        let to = dst / gcd;
 
         let downscale_factor = f64::from(to.max(from));
         let cutoff = 0.475 / downscale_factor;
@@ -135,6 +135,7 @@ impl<S: Source> Resampler<S> {
             source,
             from,
             to,
+            dest_rate,
             left_offset,
             kaiser_values,
             filter_1: filter_1.into_boxed_slice(),
@@ -156,7 +157,7 @@ impl<S: Source> Source for Resampler<S> {
 
     #[inline]
     fn sample_rate(&self) -> SampleRate {
-        self.source.sample_rate()
+        self.dest_rate
     }
 
     fn write_samples(&mut self, buffer: &mut [Sample]) -> usize {
