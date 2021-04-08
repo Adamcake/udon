@@ -217,28 +217,38 @@ impl<S: Source> Source for Resampler<S> {
                 }
             }
 
-            // And finally, let's work out some iterators for our filter and kaiser values...
-            let (filter_skip_1, kaiser_skip_1) = {
-                match (sample_index as usize).checked_sub(kaiser_values.len() * channels) {
-                    Some(x) => (x, 0),
-                    None => (channel, kaiser_values.len() - (sample_index as usize / channels) - 1),
-                }
-            };
-            let f1_iter = self.filter_1.iter().skip(filter_skip_1).step_by(channels).zip(kaiser_values.iter().skip(kaiser_skip_1));
-            let (filter_skip_2, kaiser_skip_2) = {
-                match (sample_index as usize).checked_sub(kaiser_values.len() * channels + self.buffer_size) {
-                    Some(x) => (x, 0),
-                    None => (channel, f1_iter.len() + kaiser_skip_1),
-                }
-            };
-            let f2_iter = self.filter_2.iter().skip(filter_skip_2).step_by(channels).zip(kaiser_values.iter().skip(kaiser_skip_2));
-
-            // ... and sum the products together.
-            *s = (f1_iter.map(|(a, b)| a * b).sum::<f32>() + f2_iter.map(|(a, b)| a * b).sum::<f32>()) as Sample;
+            // And at last we can calculate an output sample.
+            *s = self.get_sample(kaiser_values, channels, channel, sample_index as usize);
 
             self.output_count += 1;
         }
 
         buffer.len()
+    }
+}
+
+impl<S> Resampler<S> where S: Source {
+    // Calculates an output sample at the given sample_index.
+    // sample_index is the index of the LAST (inclusive) sample we want to use in the calculation.
+    // That's because, strangely, it's the most efficient way of calculating a stream position.
+    #[inline(always)]
+    fn get_sample(&self, kaiser_values: &[f32], channels: usize, channel: usize, sample_index: usize) -> Sample {
+        let (filter_skip_1, kaiser_skip_1) = {
+            match sample_index.checked_sub(kaiser_values.len() * channels) {
+                Some(x) => (x, 0),
+                None => (channel, kaiser_values.len() - (sample_index / channels) - 1),
+            }
+        };
+        let f1_iter = self.filter_1.iter().skip(filter_skip_1).step_by(channels).zip(kaiser_values.iter().skip(kaiser_skip_1));
+        
+        let (filter_skip_2, kaiser_skip_2) = {
+            match sample_index.checked_sub(kaiser_values.len() * channels + self.buffer_size) {
+                Some(x) => (x, 0),
+                None => (channel, f1_iter.len() + kaiser_skip_1),
+            }
+        };
+        let f2_iter = self.filter_2.iter().skip(filter_skip_2).step_by(channels).zip(kaiser_values.iter().skip(kaiser_skip_2));
+    
+        f1_iter.map(|(a, b)| a * b).sum::<f32>() + f2_iter.map(|(a, b)| a * b).sum::<f32>()
     }
 }
