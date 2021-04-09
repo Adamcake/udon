@@ -234,24 +234,25 @@ impl<S> Resampler<S> where S: Source {
     #[inline(always)]
     fn get_sample(&self, kaiser_values: &[f32], channels: usize, channel: usize, sample_index: usize) -> Sample {
         unsafe {
-            let (filter_skip_1, kaiser_skip_1) = {
-                match sample_index.checked_sub(kaiser_values.len() * channels) {
+            let kaiser_offset = kaiser_values.len() - 1;
+            let (filter_skip_1, kaiser_skip) = {
+                match sample_index.checked_sub(kaiser_offset * channels) {
                     Some(x) => (x, 0),
-                    None => (channel, kaiser_values.len() - (sample_index / channels) - 1),
+                    None => (channel, kaiser_offset - (sample_index / channels)),
                 }
             };
     
             let filter_skip_2 = {
-                match sample_index.checked_sub(kaiser_values.len() * channels + self.buffer_size) {
+                match sample_index.checked_sub(kaiser_offset * channels + self.buffer_size) {
                     Some(x) => x,
                     None => channel,
                 }
             };
-            
+
             let mut output: Sample = 0.0;
             let mut f1_ptr = self.filter_1.as_ptr().add(filter_skip_1);
             let mut f2_ptr = self.filter_2.as_ptr().add(filter_skip_2);
-            let mut kaiser_ptr = kaiser_values.as_ptr().add(kaiser_skip_1);
+            let mut kaiser_ptr = kaiser_values.as_ptr().add(kaiser_skip);
             let f1_end = self.filter_1.as_ptr().add(self.buffer_size);
             let f2_end = self.filter_2.as_ptr().add(self.buffer_size);
             let kaiser_end = kaiser_values.as_ptr().add(kaiser_values.len());
