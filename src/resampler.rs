@@ -233,22 +233,42 @@ impl<S> Resampler<S> where S: Source {
     // That's because, strangely, it's the most efficient way of calculating a stream position.
     #[inline(always)]
     fn get_sample(&self, kaiser_values: &[f32], channels: usize, channel: usize, sample_index: usize) -> Sample {
-        let (filter_skip_1, kaiser_skip_1) = {
-            match sample_index.checked_sub(kaiser_values.len() * channels) {
-                Some(x) => (x, 0),
-                None => (channel, kaiser_values.len() - (sample_index / channels) - 1),
-            }
-        };
-        let f1_iter = self.filter_1.iter().skip(filter_skip_1).step_by(channels).zip(kaiser_values.iter().skip(kaiser_skip_1));
-        
-        let (filter_skip_2, kaiser_skip_2) = {
-            match sample_index.checked_sub(kaiser_values.len() * channels + self.buffer_size) {
-                Some(x) => (x, 0),
-                None => (channel, f1_iter.len() + kaiser_skip_1),
-            }
-        };
-        let f2_iter = self.filter_2.iter().skip(filter_skip_2).step_by(channels).zip(kaiser_values.iter().skip(kaiser_skip_2));
+        unsafe {
+            let (filter_skip_1, kaiser_skip_1) = {
+                match sample_index.checked_sub(kaiser_values.len() * channels) {
+                    Some(x) => (x, 0),
+                    None => (channel, kaiser_values.len() - (sample_index / channels) - 1),
+                }
+            };
     
-        f1_iter.map(|(a, b)| a * b).sum::<f32>() + f2_iter.map(|(a, b)| a * b).sum::<f32>()
+            let filter_skip_2 = {
+                match sample_index.checked_sub(kaiser_values.len() * channels + self.buffer_size) {
+                    Some(x) => x,
+                    None => channel,
+                }
+            };
+            
+            let mut output: Sample = 0.0;
+            let mut f1_ptr = self.filter_1.as_ptr().add(filter_skip_1);
+            let mut f2_ptr = self.filter_2.as_ptr().add(filter_skip_2);
+            let mut kaiser_ptr = kaiser_values.as_ptr().add(kaiser_skip_1);
+            let f1_end = self.filter_1.as_ptr().add(self.buffer_size);
+            let f2_end = self.filter_2.as_ptr().add(self.buffer_size);
+            let kaiser_end = kaiser_values.as_ptr().add(kaiser_values.len());
+
+            while f1_ptr < f1_end && kaiser_ptr < kaiser_end {
+                output += (*f1_ptr) * (*kaiser_ptr);
+                kaiser_ptr = kaiser_ptr.add(1);
+                f1_ptr = f1_ptr.add(channels);
+            }
+
+            while f2_ptr < f2_end && kaiser_ptr < kaiser_end {
+                output += (*f2_ptr) * (*kaiser_ptr);
+                kaiser_ptr = kaiser_ptr.add(1);
+                f2_ptr = f2_ptr.add(channels);
+            }
+
+            output
+        }
     }
 }
