@@ -211,42 +211,56 @@ impl OutputStream {
     }
 
     pub fn play(&self, mut source: impl Source + Send + 'static) -> Result<(), Error> {
+        macro_rules! read_hresult {
+            ($res:expr) => {
+                match $res {
+                    0 => Ok(()),
+                    AUDCLNT_E_DEVICE_INVALIDATED => Err(Error::DeviceNotAvailable),
+                    _ => {
+                        self.device.audio_client.Stop();
+                        self.device.audio_client.Reset();
+                        Err(Error::Unknown)
+                    },
+                }
+            }
+        }
+
         unsafe {
             // Query number of samples in WASAPI's buffer
             let mut buffer_frame_count: UINT32 = 0;
-            let _err1 = self.device.audio_client.GetBufferSize(&mut buffer_frame_count);
+            read_hresult!(self.device.audio_client.GetBufferSize(&mut buffer_frame_count))?;
 
             // Write the first chunk before starting
             let mut buffer_data: *mut BYTE = ptr::null_mut();
-            let _err2 = self.render_client.GetBuffer(buffer_frame_count, &mut buffer_data);
+            read_hresult!(self.render_client.GetBuffer(buffer_frame_count, &mut buffer_data))?;
             let samples_to_write = (buffer_frame_count * UINT32::from((*self.device.wave_format.0).nChannels)) as usize;
             let samples_written = write_source(self.device.sample_format, buffer_data, samples_to_write, &mut source);
             let frames_written = (samples_written / (*self.device.wave_format.0).nChannels as usize) as UINT32;
-            let _err3 = self.render_client.ReleaseBuffer(buffer_frame_count, 0);
+            read_hresult!(self.render_client.ReleaseBuffer(buffer_frame_count, 0))?;
 
             // Start playback
-            let _err4 = self.device.audio_client.Start();
+            read_hresult!(self.device.audio_client.Start())?;
 
             // Loop, filling the output buffer until the source is empty
             let mut silent_frames = if frames_written >= buffer_frame_count {
                 loop {
                     // Wait for WASAPI wake up the thread when it wants us to send more samples
-                    let _err5 = WaitForSingleObjectEx(self.event_handle, INFINITE, FALSE);
+                    read_hresult!(WaitForSingleObjectEx(self.event_handle, INFINITE, FALSE))?;
 
                     // Query how many samples are free in the WASAPI buffer
                     let mut padding: UINT32 = 0;
-                    let _err6 = self.device.audio_client.GetCurrentPadding(&mut padding);
+                    read_hresult!(self.device.audio_client.GetCurrentPadding(&mut padding))?;
                     let frame_count = buffer_frame_count - padding;
 
                     // Do nothing if there are 0 free...
                     if frame_count > 0 {
                         // Lock the free part of the buffer and write samples to it
                         let mut buffer_data: *mut BYTE = ptr::null_mut();
-                        let _err7 = self.render_client.GetBuffer(frame_count, &mut buffer_data);
+                        read_hresult!(self.render_client.GetBuffer(frame_count, &mut buffer_data))?;
                         let samples_to_write = (frame_count * u32::from((*self.device.wave_format.0).nChannels)) as usize;
                         let frames_written = write_source(self.device.sample_format, buffer_data, samples_to_write, &mut source);
                         let frames_written = (frames_written / (*self.device.wave_format.0).nChannels as usize) as UINT32;
-                        let _err8 = self.render_client.ReleaseBuffer(frame_count, 0);
+                        read_hresult!(self.render_client.ReleaseBuffer(frame_count, 0))?;
 
                         // If our source ended (ie. frames_written < frame_count), then break,
                         // also indicating how much silence we wrote to the buffer after the end of the sound
@@ -263,23 +277,23 @@ impl OutputStream {
             // Otherwise we'll stop and flush the buffer before it can play the last bit of the user's Source.
             while silent_frames < buffer_frame_count {
                 // Wait for WASAPI wake up the thread when it wants us to send more samples
-                let _err9 = WaitForSingleObjectEx(self.event_handle, INFINITE, FALSE);
+                read_hresult!(WaitForSingleObjectEx(self.event_handle, INFINITE, FALSE))?;
 
                 // Get how much is free and add it to the count
                 let mut padding: UINT32 = 0;
-                let _err10 = self.device.audio_client.GetCurrentPadding(&mut padding);
+                read_hresult!(self.device.audio_client.GetCurrentPadding(&mut padding))?;
                 let frame_count = buffer_frame_count - padding;
                 silent_frames += frame_count;
 
                 // Put silence in the remaining buffer to keep WASAPI happy
                 let mut buffer_data: *mut BYTE = ptr::null_mut();
-                let _err11 = self.render_client.GetBuffer(frame_count, &mut buffer_data);
-                let _err12 = self.render_client.ReleaseBuffer(frame_count, AUDCLNT_BUFFERFLAGS_SILENT);
+                read_hresult!(self.render_client.GetBuffer(frame_count, &mut buffer_data))?;
+                read_hresult!(self.render_client.ReleaseBuffer(frame_count, AUDCLNT_BUFFERFLAGS_SILENT))?;
             }
 
             // Stop and flush the output buffer
-            let _err13 = self.device.audio_client.Stop();
-            let _err14 = self.device.audio_client.Reset();
+            read_hresult!(self.device.audio_client.Stop())?;
+            read_hresult!(self.device.audio_client.Reset())?;
             Ok(())
         }
     }
