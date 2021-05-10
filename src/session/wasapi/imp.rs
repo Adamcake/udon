@@ -55,12 +55,13 @@ impl Device {
 
             // TODO: IAudioClient2, IAudioClient3
             let mut audio_client = IPtr::<IAudioClient>::null();
-            if device.Activate(
+            let err = device.Activate(
                 (&IID_IAudioClient) as *const GUID as _,
                 CLSCTX_ALL,
                 ptr::null_mut(),
                 (&mut audio_client.ptr) as *mut *mut _ as *mut LPVOID,
-            ) > 0 {
+            );
+            if err > 0 {
                 CoUninitialize();
                 return Err(match err {
                     AUDCLNT_E_DEVICE_INVALIDATED => Error::DeviceNotAvailable,
@@ -69,7 +70,8 @@ impl Device {
             }
 
             let mut wave_format = CoTaskMem::<WAVEFORMATEX>(ptr::null_mut());
-            if audio_client.GetMixFormat(&mut wave_format.0) > 0 {
+            let err = audio_client.GetMixFormat(&mut wave_format.0);
+            if err > 0 {
                 audio_client.release();
                 CoUninitialize();
                 return Err(match err {
