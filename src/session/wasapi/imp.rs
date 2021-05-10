@@ -162,29 +162,46 @@ impl OutputStream {
     unsafe fn new_(device: Device) -> Result<Self, Error> {
         let mut default_period: REFERENCE_TIME = 0;
         let mut min_period: REFERENCE_TIME = 0;
-        let _err_minus1 = device.audio_client.GetDevicePeriod(&mut default_period, &mut min_period);
+        match device.audio_client.GetDevicePeriod(&mut default_period, &mut min_period) {
+            0 => (),
+            AUDCLNT_E_DEVICE_INVALIDATED => return Err(Error::DeviceNotAvailable),
+            _ => return Err(Error::Unknown),
+        }
 
         // initialize audio client
-        let _err0 = device.audio_client.Initialize(
+        match device.audio_client.Initialize(
             AUDCLNT_SHAREMODE_SHARED,
             AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
             default_period,
             0, // not in exclusive mode
             device.wave_format.0,
             ptr::null_mut(),
-        );
+        ) {
+            0 => (),
+            AUDCLNT_E_DEVICE_INVALIDATED => return Err(Error::DeviceNotAvailable),
+            AUDCLNT_E_UNSUPPORTED_FORMAT => return Err(Error::DeviceNotUsable),
+            _ => return Err(Error::Unknown),
+        }
+
         // create a nameless handle for audio render events, defaulted to non-signaled
         let event_handle = CreateEventW(ptr::null_mut(), FALSE, FALSE, ptr::null());
         if event_handle.is_null() {
-            panic!(); // TODO:
+            return Err(Error::Unknown);
         }
-        let _err2 = device.audio_client.SetEventHandle(event_handle);
+        if device.audio_client.SetEventHandle(event_handle) > 0 {
+            CloseHandle(event_handle);
+            return Err(Error::Unknown);
+        }
 
         let mut render_client = IPtr::<IAudioRenderClient>::null();
-        let _err4 = device.audio_client.GetService(
-            &IID_IAudioRenderClient,
-            &mut render_client.ptr as *mut *mut _ as *mut *mut c_void,
-        );
+        let err = device.audio_client.GetService(&IID_IAudioRenderClient, &mut render_client.ptr as *mut *mut _ as *mut *mut c_void);
+        if err > 0 {
+            CloseHandle(event_handle);
+            return Err(match err {
+                AUDCLNT_E_DEVICE_INVALIDATED => Error::DeviceNotAvailable,
+                _ => Error::Unknown,
+            });
+        }
 
         Ok(Self {
             render_client,
@@ -290,5 +307,6 @@ impl Session {
 impl Drop for OutputStream {
     fn drop(&mut self) {
         self.render_client.release();
+        unsafe { CloseHandle(self.event_handle); }
     }
 }
