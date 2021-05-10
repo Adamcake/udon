@@ -56,6 +56,8 @@ pub const AUDCLNT_STREAMFLAGS_EVENTCALLBACK: DWORD = 0x00040000;
 pub const COINIT_MULTITHREADED: COINIT = COINITBASE_MULTITHREADED;
 pub const COINITBASE_MULTITHREADED: COINITBASE = 0;
 pub const eConsole: ERole = 0;
+pub const eMultimedia: ERole = 1;
+pub const eCommunications: ERole = 2;
 pub const eRender: EDataFlow = 0;
 pub const FALSE: BOOL = 0;
 pub const INFINITE: DWORD = 0xFFFFFFFF;
@@ -165,6 +167,7 @@ extern "system" {
 #[link(name = "Ole32")]
 extern "system" {
     pub fn CoInitializeEx(pvReserved: LPVOID, dwCoInit: DWORD) -> HRESULT;
+    pub fn CoUninitialize();
     pub fn CoCreateInstance(
         rclsid: REFCLSID,
         pUnkOuter: LPUNKNOWN,

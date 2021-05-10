@@ -25,37 +25,49 @@ impl Device {
             SampleRate::new_unchecked((&*(self.wave_format.0)).nSamplesPerSec)
         }
     }
-}
 
-impl Device {
-    pub fn default_output() -> Option<Self> {
+    pub fn default_output() -> Result<Self, Error> {
         unsafe {
-            let mut enumerator = IPtr::<IMMDeviceEnumerator>::null();
-            let _err1 = CoInitializeEx(ptr::null_mut(), 2 | 8); // COINIT_MULTITHREADED | COINIT_SPEED_OVER_MEMORY
-            let _err2 = CoCreateInstance(
-                &CLSID_MMDeviceEnumerator,
-                ptr::null_mut(),
-                CLSCTX_ALL,
-                &IID_IMMDeviceEnumerator,
-                (&mut enumerator.ptr) as *mut *mut _ as *mut LPVOID,
-            );
+            // Initialize COM with COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY
+            if CoInitializeEx(ptr::null_mut(), 2 | 8) > 0 {
+                // This is the only exit point at which no cleanup is needed, since we only need to call CoUninitialize()
+                // after a successful CoInitializeEx call. There's no good reason why this should fail.
+                return Err(Error::Unknown);
+            }
 
-            // TODO: Check for DEVICE_STATE_NOTPRESENT or DEVICE_STATE_DISABLED or DEVICE_STATE_UNPLUGGED please
-            // like if not here, in the general iterator
+            let mut enumerator = IPtr::<IMMDeviceEnumerator>::null();
+            if CoCreateInstance(&CLSID_MMDeviceEnumerator, ptr::null_mut(), CLSCTX_ALL, &IID_IMMDeviceEnumerator, (&mut enumerator.ptr) as *mut *mut _ as *mut LPVOID) > 0 {
+                // Again, this really shouldn't fail.
+                CoUninitialize();
+                return Err(Error::Unknown);
+            }
+
             let mut device = IPtr::<IMMDevice>::null();
-            let _err3 = enumerator.GetDefaultAudioEndpoint(eRender, eConsole, (&mut device.ptr) as *mut *mut _ as *mut *mut IMMDevice); // TODO: eConsole
+            let err = enumerator.GetDefaultAudioEndpoint(eRender, eMultimedia, (&mut device.ptr) as *mut *mut _ as *mut *mut IMMDevice);
+            enumerator.release();
+            if err > 0 {
+                CoUninitialize();
+                return Err(Error::Unknown);
+            }
 
             // TODO: IAudioClient2, IAudioClient3
             let mut audio_client = IPtr::<IAudioClient>::null();
-            let _err4 = device.Activate(
+            if device.Activate(
                 (&IID_IAudioClient) as *const GUID as _,
                 CLSCTX_ALL,
                 ptr::null_mut(),
                 (&mut audio_client.ptr) as *mut *mut _ as *mut LPVOID,
-            );
+            ) > 0 {
+                CoUninitialize();
+                return Err(Error::Unknown);
+            }
 
             let mut wave_format = CoTaskMem::<WAVEFORMATEX>(ptr::null_mut());
-            let _err6 = audio_client.GetMixFormat(&mut wave_format.0);
+            if audio_client.GetMixFormat(&mut wave_format.0) > 0 {
+                audio_client.release();
+                CoUninitialize();
+                return Err(Error::Unknown);
+            }
 
             // TODO: What about *unsigned* 16-bit?
             let format_info = &*wave_format.0;
@@ -67,13 +79,21 @@ impl Device {
                     match (&format_info_extended.SubFormat, bps) {
                         (x, 16) if x.eq(&KSDATAFORMAT_SUBTYPE_PCM) => SampleFormat::I16,
                         (x, 32) if x.eq(&KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) => SampleFormat::F32,
-                        _ => return None, // TODO: err
+                        _ => {
+                            audio_client.release();
+                            CoUninitialize();
+                            return Err(Error::DeviceNotUsable)
+                        },
                     }
                 },
-                (_, _) => return None, // TODO: err
+                (_, _) => {
+                    audio_client.release();
+                    CoUninitialize();
+                    return Err(Error::DeviceNotUsable)
+                },
             };
 
-            Some(Device {
+            Ok(Device {
                 audio_client,
                 sample_format,
                 wave_format,
@@ -85,6 +105,7 @@ impl Device {
 impl Drop for Device {
     fn drop(&mut self) {
         self.audio_client.release();
+        unsafe { CoUninitialize(); }
     }
 }
 
@@ -243,7 +264,7 @@ impl Session {
         Ok(Self)
     }
 
-    pub fn default_output_device(&self) -> Option<session::Device> {
+    pub fn default_output_device(&self) -> Result<session::Device, Error> {
         session_wrap!(Device::default_output(), Device(DeviceImpl), Wasapi)
     }
 

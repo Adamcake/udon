@@ -84,7 +84,7 @@ macro_rules! backends {
 
         backend_wrap_fns! {
             impl Session(SessionImpl) <- $( $variant if $cfg ),* {
-                pub fn default_output_device(&self) -> Option<Device>;
+                pub fn default_output_device(&self) -> Result<Device, Error>;
 
                 pub fn open_output_stream(
                     &self,

@@ -19,8 +19,8 @@ impl Session {
         Ok(Self)
     }
 
-    pub fn default_output_device(&self) -> Option<session::Device> {
-        session_wrap!(Some(Device), Device(DeviceImpl), Dummy)
+    pub fn default_output_device(&self) -> Result<session::Device, Error> {
+        session_wrap!(Ok(Device), Device(DeviceImpl), Dummy)
     }
 
     pub fn open_output_stream(
