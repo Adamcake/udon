@@ -61,6 +61,7 @@ pub const eCommunications: ERole = 2;
 pub const eRender: EDataFlow = 0;
 pub const ERROR_NOT_FOUND: HRESULT = 0x80070490;
 pub const AUDCLNT_E_DEVICE_INVALIDATED: HRESULT = 0x88890004;
+pub const AUDCLNT_E_UNSUPPORTED_FORMAT: HRESULT = 0x88890008;
 pub const FALSE: BOOL = 0;
 pub const INFINITE: DWORD = 0xFFFFFFFF;
 pub const TRUE: BOOL = 0;
