@@ -363,7 +363,7 @@ impl<T> core::ops::Deref for IPtr<T> {
             panic!("{} deref when null", core::any::type_name::<Self>());
         }
         #[cfg(not(debug_assertions))]
-        unsafe { &*self.ptr }
+        unsafe { &*(self.ptr as *mut _) }
     }
 }
 
@@ -377,6 +377,6 @@ impl<T> core::ops::DerefMut for IPtr<T> {
             panic!("{} deref-mut when null", core::any::type_name::<Self>());
         }
         #[cfg(not(debug_assertions))]
-        unsafe { &mut *self.ptr }
+        unsafe { &mut *(self.ptr as *mut _) }
     }
 }
