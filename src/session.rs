@@ -89,8 +89,16 @@ macro_rules! backends {
                 pub fn open_output_stream(
                     &self,
                     device: Device,
-                    source: impl Source + Send + 'static,
                 ) -> Result<OutputStream, Error>;
+            }
+        }
+
+        backend_wrap_fns! {
+            impl OutputStream(OutputStreamImpl) <- $( $variant if $cfg ),* {
+                pub fn play(
+                    &self,
+                    source: impl Source + Send + 'static
+                ) -> Result<(), Error>;
             }
         }
     };

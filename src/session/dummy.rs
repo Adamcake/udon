@@ -26,8 +26,16 @@ impl Session {
     pub fn open_output_stream(
         &self,
         _device: session::Device,
-        _source: impl Source + Send + 'static,
     ) -> Result<session::OutputStream, Error> {
         session_wrap!(Ok(OutputStream), OutputStream(OutputStreamImpl), Dummy)
+    }
+}
+
+impl OutputStream {
+    pub fn play(
+        &self,
+        _source: impl Source + Send + 'static
+    ) -> Result<(), Error> {
+        Ok(())
     }
 }

@@ -1,5 +1,7 @@
 #![allow(bad_style, dead_code)]
 
+pub use std::cell::UnsafeCell;
+
 // C Types
 pub use core::ffi::c_void;
 pub type c_char = i8;
@@ -202,14 +204,14 @@ macro_rules! com_interface {
             #[repr(C)]
             $v struct $vt_name {
                 __iunknown_vtable: IUnknownVtable,
-                $( $fn_name: unsafe extern "system" fn( *mut $name , $($arg_ty),* ) -> $ret ),*
+                $( $fn_name: unsafe extern "system" fn( *const $name , $($arg_ty),* ) -> $ret ),*
             }
 
             impl $name {
                 $(
                     $(#[$fn_outer])*
                     #[inline]
-                    pub unsafe fn $fn_name ( &mut self , $( $arg_name : $arg_ty ),* ) -> $ret {
+                    pub unsafe fn $fn_name ( &self , $( $arg_name : $arg_ty ),* ) -> $ret {
                         ((*self.0).$fn_name)( self , $( $arg_name ),* )
                     }
                 )*
@@ -317,19 +319,28 @@ impl<T> core::ops::Drop for CoTaskMem<T> {
 }
 
 pub struct IPtr<T> {
-    pub ptr: *mut T,
+    pub ptr: *mut UnsafeCell<T>,
 }
 
 unsafe impl<T> Send for IPtr<T> {}
 
 impl<T> IPtr<T> {
+    #[inline]
     pub fn new(ptr: *mut T) -> Self {
-        Self { ptr }
+        Self { ptr: ptr as _ }
     }
 
+    #[inline]
     pub fn null() -> Self {
         Self {
             ptr: core::ptr::null_mut(),
+        }
+    }
+
+    #[inline]
+    pub fn release(&mut self) {
+        if !self.ptr.is_null() {
+            unsafe { core::ptr::drop_in_place(self.ptr) }
         }
     }
 }
@@ -341,7 +352,7 @@ impl<T> core::ops::Deref for IPtr<T> {
     fn deref(&self) -> &Self::Target {
         #[cfg(debug_assertions)]
         if !self.ptr.is_null() {
-            unsafe { &*self.ptr }
+            unsafe { &*(self.ptr as *mut T) }
         } else {
             panic!("{} deref when null", core::any::type_name::<Self>());
         }
@@ -355,20 +366,11 @@ impl<T> core::ops::DerefMut for IPtr<T> {
     fn deref_mut(&mut self) -> &mut <Self as core::ops::Deref>::Target {
         #[cfg(debug_assertions)]
         if !self.ptr.is_null() {
-            unsafe { &mut *self.ptr }
+            unsafe { &mut *(self.ptr as *mut T) }
         } else {
             panic!("{} deref-mut when null", core::any::type_name::<Self>());
         }
         #[cfg(not(debug_assertions))]
         unsafe { &mut *self.ptr }
-    }
-}
-
-impl<T> core::ops::Drop for IPtr<T> {
-    #[inline]
-    fn drop(&mut self) {
-        if !self.ptr.is_null() {
-            unsafe { core::ptr::drop_in_place(self.ptr) }
-        }
     }
 }
