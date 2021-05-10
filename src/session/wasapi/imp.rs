@@ -47,7 +47,10 @@ impl Device {
             enumerator.release();
             if err > 0 {
                 CoUninitialize();
-                return Err(Error::Unknown);
+                return Err(match err {
+                    ERROR_NOT_FOUND => Error::NoOutputDevice,
+                    _ => Error::Unknown,
+                });
             }
 
             // TODO: IAudioClient2, IAudioClient3
@@ -59,14 +62,20 @@ impl Device {
                 (&mut audio_client.ptr) as *mut *mut _ as *mut LPVOID,
             ) > 0 {
                 CoUninitialize();
-                return Err(Error::Unknown);
+                return Err(match err {
+                    AUDCLNT_E_DEVICE_INVALIDATED => Error::DeviceNotAvailable,
+                    _ => Error::Unknown,
+                });
             }
 
             let mut wave_format = CoTaskMem::<WAVEFORMATEX>(ptr::null_mut());
             if audio_client.GetMixFormat(&mut wave_format.0) > 0 {
                 audio_client.release();
                 CoUninitialize();
-                return Err(Error::Unknown);
+                return Err(match err {
+                    AUDCLNT_E_DEVICE_INVALIDATED => Error::DeviceNotAvailable,
+                    _ => Error::Unknown,
+                });
             }
 
             // TODO: What about *unsigned* 16-bit?
