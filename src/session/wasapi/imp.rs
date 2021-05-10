@@ -30,14 +30,8 @@ impl Device {
 impl Device {
     pub fn default_output() -> Option<Self> {
         unsafe {
-            // TODO: "In Windows 8, the first use of IAudioClient
-            // to access the audio device should be on the STA thread.
-            // Calls from an MTA thread may result in undefined behavior."
-            //
-            // ^ WHAT
-
             let mut enumerator = IPtr::<IMMDeviceEnumerator>::null();
-            let _err1 = CoInitializeEx(ptr::null_mut(), 0);
+            let _err1 = CoInitializeEx(ptr::null_mut(), 2 | 8); // COINIT_MULTITHREADED | COINIT_SPEED_OVER_MEMORY
             let _err2 = CoCreateInstance(
                 &CLSID_MMDeviceEnumerator,
                 ptr::null_mut(),
