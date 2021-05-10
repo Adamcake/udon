@@ -169,10 +169,6 @@ impl OutputStream {
 
     pub fn play(&self, mut source: impl Source + Send + 'static) -> Result<(), Error> {
         unsafe {
-            // The audio client should currently be paused at this point, so reset it to ensure there's no
-            // leftover data in it waiting to be played
-            
-
             // Query number of samples in WASAPI's buffer
             let mut buffer_frame_count: UINT32 = 0;
             let _err1 = self.device.audio_client.GetBufferSize(&mut buffer_frame_count);
