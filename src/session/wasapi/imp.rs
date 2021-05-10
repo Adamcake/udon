@@ -142,8 +142,8 @@ impl OutputStream {
         let _err0 = device.audio_client.Initialize(
             AUDCLNT_SHAREMODE_SHARED,
             AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-            0, // not in exclusive mode
             default_period,
+            0, // not in exclusive mode
             device.wave_format.0,
             ptr::null_mut(),
         );
