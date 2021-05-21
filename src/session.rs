@@ -148,6 +148,9 @@ backends! {
 
     /// Windows Audio Session API (WASAPI)
     mod wasapi => Wasapi if all(target_os = "windows", feature = "wasapi"),
+
+    /// ALSA
+    mod alsa => Alsa if all(any(target_os = "dragonfly", target_os = "freebsd", target_os = "linux"), feature = "wasapi"),
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

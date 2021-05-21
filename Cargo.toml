@@ -10,6 +10,10 @@ keywords = ["audio", "gamedev", "playback"]
 include = ["src/**/*", "Cargo.toml"]
 
 [features]
-default = ["wasapi"] # TODO: "if windows"
+default = ["wasapi", "alsa"] # TODO: "if windows"
+alsa = ["alsa_rs"]
 wasapi = []
 wav = []
+
+[target.'cfg(any(target_os = "dragonfly", target_os = "freebsd", target_os = "linux"))'.dependencies]
+alsa_rs = { package = "alsa", version = "0.5", optional = true }
