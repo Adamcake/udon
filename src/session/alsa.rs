@@ -30,7 +30,7 @@ impl Device {
         let hwp = alsa_rs::pcm::HwParams::any(&pcm).unwrap();
         hwp.set_channels(2).unwrap();
         hwp.set_rate(req_samplerate, alsa_rs::ValueOr::Nearest).unwrap();
-        hwp.set_format(alsa_rs::pcm::Format::FloatLE).unwrap();
+        hwp.set_format(alsa_rs::pcm::Format::float()).unwrap();
         hwp.set_access(alsa_rs::pcm::Access::RWInterleaved).unwrap(); // mmap would be better but doesn't work
         hwp.set_buffer_size(req_bufsize).unwrap();
         hwp.set_period_size(req_bufsize / 4, alsa_rs::ValueOr::Nearest).unwrap();
