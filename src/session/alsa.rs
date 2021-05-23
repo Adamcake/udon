@@ -27,23 +27,24 @@ impl Device {
         };
 
         // Hardware parameters
-        let hwp = alsa_rs::pcm::HwParams::any(&pcm).unwrap();
-        hwp.set_channels(2).unwrap();
-        hwp.set_rate(req_samplerate, alsa_rs::ValueOr::Nearest).unwrap();
-        hwp.set_format(alsa_rs::pcm::Format::float()).unwrap();
-        hwp.set_access(alsa_rs::pcm::Access::RWInterleaved).unwrap(); // mmap would be better but doesn't work
-        hwp.set_buffer_size(req_bufsize).unwrap();
-        hwp.set_period_size(req_bufsize / 4, alsa_rs::ValueOr::Nearest).unwrap();
-        pcm.hw_params(&hwp).unwrap();
+        let hwp = alsa_rs::pcm::HwParams::any(&pcm).map_err(|_| Error::Unknown)?;
+        hwp.set_channels(2).map_err(|_| Error::DeviceNotUsable)?;
+        hwp.set_rate(req_samplerate, alsa_rs::ValueOr::Nearest).map_err(|_| Error::DeviceNotUsable)?;
+        hwp.set_format(alsa_rs::pcm::Format::float()).map_err(|_| Error::DeviceNotUsable)?;
+        // Note: this call fails with EINVAL if the device doesn't support mmap
+        hwp.set_access(alsa_rs::pcm::Access::MMapInterleaved).map_err(|_| Error::DeviceNotUsable)?;
+        hwp.set_buffer_size(req_bufsize).map_err(|_| Error::DeviceNotUsable)?;
+        hwp.set_period_size(req_bufsize / 4, alsa_rs::ValueOr::Nearest).map_err(|_| Error::DeviceNotUsable)?;
+        pcm.hw_params(&hwp).map_err(|_| Error::DeviceNotUsable)?;
         std::mem::drop(hwp); // because rust
 
         // Software parameters
-        let hwp = pcm.hw_params_current().unwrap();
-        let swp = pcm.sw_params_current().unwrap();
-        swp.set_start_threshold(hwp.get_buffer_size().unwrap()).unwrap();
-        swp.set_avail_min(hwp.get_period_size().unwrap()).unwrap();
-        pcm.sw_params(&swp).unwrap();
-        let rate = hwp.get_rate().ok().and_then(NonZeroU32::new).unwrap();
+        let hwp = pcm.hw_params_current().map_err(|_| Error::Unknown)?;
+        let swp = pcm.sw_params_current().map_err(|_| Error::Unknown)?;
+        swp.set_start_threshold(hwp.get_buffer_size().map_err(|_| Error::Unknown)?).map_err(|_| Error::DeviceNotUsable)?;
+        swp.set_avail_min(hwp.get_period_size().map_err(|_| Error::Unknown)?).map_err(|_| Error::DeviceNotUsable)?;
+        pcm.sw_params(&swp).map_err(|_| Error::DeviceNotUsable)?;
+        let rate = hwp.get_rate().ok().and_then(NonZeroU32::new).ok_or(Error::DeviceNotUsable)?;
         std::mem::drop(swp); // because rust 2 electric boolgaoo
         std::mem::drop(hwp); // because rust (2016) (remastered for ps5)
 
@@ -67,14 +68,14 @@ impl OutputStream {
 
     pub fn play(&self, mut source: impl Source + Send + 'static) -> Result<(), Error> {
         // TODO: might it be better to use io.mmap here instead of io.writei?
-        let io = self.0.pcm.io_f32().unwrap();
+        let io = self.0.pcm.io_f32().map_err(|_| Error::Unknown)?;
         let mut samples = Vec::with_capacity(96000);
         samples.resize_with(96000, Default::default);
         source.write_samples(&mut samples);
-        let written = io.writei(&samples).unwrap();
+        let written = io.writei(&samples).map_err(|_| Error::Unknown)?;
         println!("Wrote {} samples?", written);
         dbg!(self.0.pcm.state());
-        self.0.pcm.drain().unwrap();
+        self.0.pcm.drain().map_err(|_| Error::Unknown)?;
         Ok(())
     }
 }
