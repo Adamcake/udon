@@ -1,10 +1,13 @@
 use crate::{error::Error, source::{ChannelCount, SampleRate, Source}, session};
 use std::num::{NonZeroU16, NonZeroU32};
 
+const BUFFER_FRAMES: i64 = 256;
+
 pub struct Device {
     pcm: alsa_rs::pcm::PCM,
     sample_rate: SampleRate,
     channel_count: ChannelCount,
+    mmap: bool,
 }
 
 impl Device {
@@ -18,7 +21,6 @@ impl Device {
 
     pub fn default_output() -> Result<Self, Error> {
         let req_samplerate = 48000;
-        let req_bufsize = 256;
 
         // Open the device
         let pcm = match alsa_rs::PCM::new("default", alsa_rs::Direction::Playback, false) {
@@ -31,10 +33,16 @@ impl Device {
         hwp.set_channels(2).map_err(|_| Error::DeviceNotUsable)?;
         hwp.set_rate(req_samplerate, alsa_rs::ValueOr::Nearest).map_err(|_| Error::DeviceNotUsable)?;
         hwp.set_format(alsa_rs::pcm::Format::float()).map_err(|_| Error::DeviceNotUsable)?;
-        // Note: this call fails with EINVAL if the device doesn't support mmap
-        hwp.set_access(alsa_rs::pcm::Access::MMapInterleaved).map_err(|_| Error::DeviceNotUsable)?;
-        hwp.set_buffer_size(req_bufsize).map_err(|_| Error::DeviceNotUsable)?;
-        hwp.set_period_size(req_bufsize / 4, alsa_rs::ValueOr::Nearest).map_err(|_| Error::DeviceNotUsable)?;
+        // This next call fails with EINVAL if the device doesn't support mmap
+        let mmap = match hwp.set_access(alsa_rs::pcm::Access::MMapInterleaved) {
+            Ok(()) => true,
+            Err(_) => {
+                hwp.set_access(alsa_rs::pcm::Access::RWInterleaved).map_err(|_| Error::DeviceNotUsable)?;
+                false
+            },
+        };
+        hwp.set_buffer_size(BUFFER_FRAMES).map_err(|_| Error::DeviceNotUsable)?;
+        hwp.set_period_size(BUFFER_FRAMES / 4, alsa_rs::ValueOr::Nearest).map_err(|_| Error::DeviceNotUsable)?;
         pcm.hw_params(&hwp).map_err(|_| Error::DeviceNotUsable)?;
         std::mem::drop(hwp); // because rust
 
@@ -52,6 +60,7 @@ impl Device {
             pcm,
             sample_rate: rate,
             channel_count: unsafe { NonZeroU16::new_unchecked(2) },
+            mmap,
         })
     }
 }
@@ -66,17 +75,51 @@ impl OutputStream {
         }
     }
 
-    pub fn play(&self, mut source: impl Source + Send + 'static) -> Result<(), Error> {
-        // TODO: might it be better to use io.mmap here instead of io.writei?
+    pub fn play(&self, source: impl Source + Send + 'static) -> Result<(), Error> {
+        if self.0.mmap {
+            self.play_mmap(source)
+        } else {
+            self.play_writei(source)
+        }
+    }
+
+    fn play_writei(&self, mut source: impl Source + Send + 'static) -> Result<(), Error> {
+        let channel_count = usize::from(u16::from(self.0.channel_count));
+        let buf_len = (BUFFER_FRAMES as usize) * channel_count;
+        let mut buf: Vec<f32> = Vec::with_capacity(buf_len);
+        unsafe { buf.set_len(buf_len); }
+        let mut buf_start = 0;
+        let mut buf_end = source.write_samples(&mut buf);
         let io = self.0.pcm.io_f32().map_err(|_| Error::Unknown)?;
-        let mut samples = Vec::with_capacity(96000);
-        samples.resize_with(96000, Default::default);
-        source.write_samples(&mut samples);
-        let written = io.writei(&samples).map_err(|_| Error::Unknown)?;
-        println!("Wrote {} samples?", written);
-        dbg!(self.0.pcm.state());
+
+        loop {
+            match io.writei(&buf[buf_start..buf_end]) {
+                Ok(n) if n * channel_count == buf_end - buf_start => {
+                    if buf_end != buf_len {
+                        break;
+                    }
+                    buf_start = 0;
+                    buf_end = source.write_samples(&mut buf);
+                },
+                Ok(n) => {
+                    // "The returned number of frames can be less only if a signal or underrun occurred." - alsa docs
+                    buf_start = n * channel_count;
+                },
+                Err(e) => {
+                    // Underruns can and do happen here, so we need to try to recover from them...
+                    // TODO: handle this next error properly, could be unplug etc
+                    self.0.pcm.try_recover(e, true).map_err(|_| Error::Unknown)?;
+                },
+            }
+        }
+
         self.0.pcm.drain().map_err(|_| Error::Unknown)?;
+        self.0.pcm.reset().map_err(|_| Error::Unknown)?;
         Ok(())
+    }
+
+    fn play_mmap(&self, _source: impl Source + Send + 'static) -> Result<(), Error> {
+        todo!()
     }
 }
 
