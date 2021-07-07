@@ -1,5 +1,5 @@
 [package]
-name = "kou"
+name = "udon"
 version = "0.0.1"
 authors = ["Adam <classygopher@gmail.com>"]
 edition = "2018"

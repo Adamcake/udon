@@ -38,7 +38,6 @@ impl Device {
             let mut enumerator = IPtr::<IMMDeviceEnumerator>::null();
             if CoCreateInstance(&CLSID_MMDeviceEnumerator, ptr::null_mut(), CLSCTX_ALL, &IID_IMMDeviceEnumerator, (&mut enumerator.ptr) as *mut *mut _ as *mut LPVOID) > 0 {
                 // Again, this really shouldn't fail.
-                CoUninitialize();
                 return Err(Error::Unknown);
             }
 
@@ -46,7 +45,6 @@ impl Device {
             let err = enumerator.GetDefaultAudioEndpoint(eRender, eMultimedia, (&mut device.ptr) as *mut *mut _ as *mut *mut IMMDevice);
             enumerator.release();
             if err > 0 {
-                CoUninitialize();
                 return Err(match err {
                     ERROR_NOT_FOUND => Error::NoOutputDevice,
                     _ => Error::Unknown,
@@ -62,7 +60,6 @@ impl Device {
                 (&mut audio_client.ptr) as *mut *mut _ as *mut LPVOID,
             );
             if err > 0 {
-                CoUninitialize();
                 return Err(match err {
                     AUDCLNT_E_DEVICE_INVALIDATED => Error::DeviceNotAvailable,
                     _ => Error::Unknown,
@@ -73,7 +70,6 @@ impl Device {
             let err = audio_client.GetMixFormat(&mut wave_format.0);
             if err > 0 {
                 audio_client.release();
-                CoUninitialize();
                 return Err(match err {
                     AUDCLNT_E_DEVICE_INVALIDATED => Error::DeviceNotAvailable,
                     _ => Error::Unknown,
@@ -87,19 +83,17 @@ impl Device {
                 (WAVE_FORMAT_IEEE_FLOAT, 32) => SampleFormat::F32,
                 (WAVE_FORMAT_EXTENSIBLE, bps) => {
                     let format_info_extended = &*(wave_format.0 as *mut WAVEFORMATEXTENSIBLE);
-                    match (&format_info_extended.SubFormat, bps) {
+                    match (ptr::addr_of!(format_info_extended.SubFormat).read_unaligned(), bps) {
                         (x, 16) if x.eq(&KSDATAFORMAT_SUBTYPE_PCM) => SampleFormat::I16,
                         (x, 32) if x.eq(&KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) => SampleFormat::F32,
                         _ => {
                             audio_client.release();
-                            CoUninitialize();
                             return Err(Error::DeviceNotUsable)
                         },
                     }
                 },
                 (_, _) => {
                     audio_client.release();
-                    CoUninitialize();
                     return Err(Error::DeviceNotUsable)
                 },
             };
@@ -116,7 +110,6 @@ impl Device {
 impl Drop for Device {
     fn drop(&mut self) {
         self.audio_client.release();
-        unsafe { CoUninitialize(); }
     }
 }
 
