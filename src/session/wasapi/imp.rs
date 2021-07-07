@@ -125,9 +125,23 @@ unsafe fn write_source(
     buffer: *mut u8,
     sample_count: usize,
     source: &mut dyn Source,
+    additional_buf: &mut Vec<f32>,
 ) -> usize {
     match format {
-        SampleFormat::I16 => todo!(), // TODO: big
+        SampleFormat::I16 => {
+            let buf = slice::from_raw_parts_mut(buffer as *mut i16, sample_count);
+            additional_buf.clear();
+            additional_buf.reserve(sample_count);
+            additional_buf.set_len(sample_count);
+            let count = source.write_samples(additional_buf.as_mut_slice());
+            if let Some(remaining) = additional_buf.get_mut(count..) {
+                remaining.iter_mut().for_each(|x| *x = 0.0);
+            }
+            for (src, dest) in additional_buf.iter().copied().zip(buf.into_iter()) {
+                *dest = (src * i16::max_value() as f32).round() as i16;
+            }
+            count
+        },
         SampleFormat::F32 => {
             let buf = slice::from_raw_parts_mut(buffer as *mut f32, sample_count);
             let count = source.write_samples(buf);
@@ -218,6 +232,8 @@ impl OutputStream {
             }
         }
 
+        let mut maybe_buf = Vec::new();
+
         unsafe {
             // Query number of samples in WASAPI's buffer
             let mut buffer_frame_count: UINT32 = 0;
@@ -227,7 +243,7 @@ impl OutputStream {
             let mut buffer_data: *mut BYTE = ptr::null_mut();
             read_hresult!(self.render_client.GetBuffer(buffer_frame_count, &mut buffer_data))?;
             let samples_to_write = (buffer_frame_count * UINT32::from((*self.device.wave_format.0).nChannels)) as usize;
-            let samples_written = write_source(self.device.sample_format, buffer_data, samples_to_write, &mut source);
+            let samples_written = write_source(self.device.sample_format, buffer_data, samples_to_write, &mut source, &mut maybe_buf);
             let frames_written = (samples_written / (*self.device.wave_format.0).nChannels as usize) as UINT32;
             read_hresult!(self.render_client.ReleaseBuffer(buffer_frame_count, 0))?;
 
@@ -251,7 +267,7 @@ impl OutputStream {
                         let mut buffer_data: *mut BYTE = ptr::null_mut();
                         read_hresult!(self.render_client.GetBuffer(frame_count, &mut buffer_data))?;
                         let samples_to_write = (frame_count * u32::from((*self.device.wave_format.0).nChannels)) as usize;
-                        let frames_written = write_source(self.device.sample_format, buffer_data, samples_to_write, &mut source);
+                        let frames_written = write_source(self.device.sample_format, buffer_data, samples_to_write, &mut source, &mut maybe_buf);
                         let frames_written = (frames_written / (*self.device.wave_format.0).nChannels as usize) as UINT32;
                         read_hresult!(self.render_client.ReleaseBuffer(frame_count, 0))?;
 
