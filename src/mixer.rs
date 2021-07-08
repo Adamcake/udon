@@ -1,5 +1,5 @@
-use crate::{Sample, source::{ChannelCount, SampleRate, Source}};
-use std::sync::mpsc::{self, Receiver, Sender};
+use crate::{source::{ChannelCount, SampleRate, Sample, Source}};
+use std::{sync::Arc, sync::{atomic::{AtomicBool, Ordering}, mpsc::{self, Receiver, Sender}}};
 
 const INIT_CAPACITY: usize = 16;
 
@@ -10,14 +10,14 @@ const INIT_CAPACITY: usize = 16;
 pub struct Mixer {
     channels: ChannelCount,
     sample_rate: SampleRate,
-    sources: Vec<Box<dyn Source + Send + Sync>>,
+    sources: Vec<(Box<dyn Source + Send + 'static>, Arc<SoundInfo>)>,
     input_buffer: Vec<Sample>,
-    receiver: Receiver<Box<dyn Source + Send + Sync + 'static>>,
+    receiver: Receiver<(Box<dyn Source + Send + 'static>, Arc<SoundInfo>)>,
 }
 
 /// Returned from Mixer::new(), and permanently associated with the Mixer created alongside it.
 /// Used for dynamically adding sounds to the Mixer with `handle.add()`
-pub struct MixerHandle(Sender<Box<dyn Source + Send + Sync + 'static>>);
+pub struct MixerHandle(Sender<(Box<dyn Source + Send + 'static>, Arc<SoundInfo>)>);
 
 /// Error type for Mixer calls
 #[derive(Debug, Clone, Copy)]
@@ -29,10 +29,10 @@ pub enum Error {
 
 impl Mixer {
     /// Constructs a new Mixer and MixerHandle.
-    /// 
+    ///
     /// `Mixer` does not make any changes to the channel count or sample rate of its Sources. As such, it needs to know
     /// its expected output rate and channel count on construction.
-    /// 
+    ///
     /// If Sources with a different sample rate or channel count than this are subsequently added to the Mixer,
     /// they will sound wrong. For resampling and rechanneling, see `Resampler` and `Rechanneler`.
     pub fn new(sample_rate: SampleRate, channels: ChannelCount) -> (Self, MixerHandle) {
@@ -55,15 +55,22 @@ impl Source for Mixer {
 
         let input_buffer = &mut self.input_buffer;
 
-        self.sources.retain_mut(|source| {
-            input_buffer.resize_with(buffer.len(), Default::default);
-            let count = source.write_samples(input_buffer);
+        self.sources.retain_mut(|(source, info)| {
+            if info.stop.load(Ordering::Acquire) {
+                info.running.store(false, Ordering::Release);
+                false
+            } else {
+                input_buffer.resize_with(buffer.len(), Default::default);
+                let count = source.write_samples(input_buffer);
 
-            for (in_sample, out_sample) in input_buffer.iter().take(count).copied().zip(buffer.iter_mut()) {
-                *out_sample += in_sample;
+                for (in_sample, out_sample) in input_buffer.iter().take(count).copied().zip(buffer.iter_mut()) {
+                    *out_sample += in_sample;
+                }
+
+                let running = count == input_buffer.len();
+                info.running.store(running, Ordering::Release);
+                running
             }
-
-            count == input_buffer.len()
         });
 
         buffer.len()
@@ -81,8 +88,33 @@ impl Source for Mixer {
 impl MixerHandle {
     /// Adds a Source to the Mixer associated with this handle. The Mixer will play the Source until it ends,
     /// then discard it.
-    pub fn add(&self, source: impl Source + Send + Sync + 'static) -> Result<(), Error> {
-        self.0.send(Box::new(source)).ok().ok_or(Error::SendError)
+    pub fn add(&self, source: impl Source + Send + 'static) -> Result<SoundHandle, Error> {
+        let arc = Arc::new(SoundInfo {
+            running: AtomicBool::new(true),
+            stop: AtomicBool::new(false),
+        });
+
+        self.0.send((Box::new(source), arc.clone())).map_err(|_| Error::SendError)?;
+        Ok(SoundHandle(arc))
+    }
+}
+
+struct SoundInfo {
+    running: AtomicBool,
+    stop: AtomicBool,
+}
+
+pub struct SoundHandle(Arc<SoundInfo>);
+
+impl SoundHandle {
+    #[inline(always)]
+    pub fn is_running(&self) -> bool {
+        self.0.running.load(Ordering::Acquire)
+    }
+
+    #[inline(always)]
+    pub fn stop(&mut self) {
+        self.0.stop.store(true, Ordering::Release)
     }
 }
 
