@@ -1,5 +1,6 @@
 //pub mod buffer;
 mod error;
+pub mod cycle;
 pub mod mixer;
 pub mod rechanneler;
 pub mod resampler;
