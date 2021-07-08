@@ -9,6 +9,7 @@ use std::sync::Arc;
 /// Once created, the file contents will be atomically reference-counted, so making multiple copies of this type using
 /// .clone() is relatively costless. Cloning the player is useful if you intend to play it more than once.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde-derives", derive(serde::Serialize, serde::Deserialize))]
 pub struct WavPlayer {
     file: Arc<[u8]>,
     channels: ChannelCount,
@@ -21,6 +22,7 @@ pub struct WavPlayer {
 }
 
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde-derives", derive(serde::Serialize, serde::Deserialize))]
 pub enum Error {
     /// This does not appear to be a .wav file
     InvalidFile,
@@ -33,6 +35,7 @@ pub enum Error {
 }
 
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde-derives", derive(serde::Serialize, serde::Deserialize))]
 pub enum Format {
     U8,
     I16,

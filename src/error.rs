@@ -1,4 +1,5 @@
 #[derive(Debug)]
+#[cfg_attr(feature = "serde-derives", derive(serde::Serialize, serde::Deserialize))]
 pub enum Error {
     /// The device no longer exists (ie. it has been disabled or unplugged)
     DeviceNotAvailable,

@@ -15,6 +15,7 @@ use crate::source::{ChannelCount, Sample, SampleRate, Source};
 /// A basic sound-playing object. When fed to an output stream, will play the samples it contains until it has no more.
 /// If the samples have a different sample rate than the output stream, the output will sound sped up or slowed down.
 /// Use a resampler (such as boop::resampler::Polyphase, or implement your own) to resample it at the correct rate.
+#[cfg_attr(feature = "serde-derives", derive(serde::Serialize, serde::Deserialize))]
 pub struct Player {
     samples: Box<[Sample]>,
     channels: ChannelCount,
