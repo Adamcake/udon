@@ -117,7 +117,7 @@ impl SoundHandle {
     }
 
     #[inline(always)]
-    pub fn stop(&mut self) {
+    pub fn stop(&self) {
         self.0.stop.store(true, Ordering::Release)
     }
 }
