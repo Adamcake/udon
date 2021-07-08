@@ -16,13 +16,13 @@ pub struct Device {
 impl Device {
     pub fn channel_count(&self) -> ChannelCount {
         unsafe {
-            ChannelCount::new_unchecked((&*(self.wave_format.0)).nChannels)
+            ChannelCount::new_unchecked((*self.wave_format.0).nChannels)
         }
     }
 
     pub fn sample_rate(&self) -> SampleRate {
         unsafe {
-            SampleRate::new_unchecked((&*(self.wave_format.0)).nSamplesPerSec)
+            SampleRate::new_unchecked((*self.wave_format.0).nSamplesPerSec)
         }
     }
 
@@ -137,7 +137,7 @@ unsafe fn write_source(
             if let Some(remaining) = additional_buf.get_mut(count..) {
                 remaining.iter_mut().for_each(|x| *x = 0.0);
             }
-            for (src, dest) in additional_buf.iter().copied().zip(buf.into_iter()) {
+            for (src, dest) in additional_buf.iter().copied().zip(buf.iter_mut()) {
                 *dest = (src * i16::max_value() as f32).round() as i16;
             }
             count
