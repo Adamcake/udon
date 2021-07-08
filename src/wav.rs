@@ -96,8 +96,8 @@ impl WavPlayer {
 
         Ok(Self {
             file: file.into(),
-            channels: channels.into(),
-            sample_rate: sample_rate,
+            channels,
+            sample_rate,
             sample_bytes,
             data_start,
             next_sample_offset: data_start,
