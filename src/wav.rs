@@ -14,6 +14,7 @@ pub struct WavPlayer {
     channels: ChannelCount,
     sample_rate: SampleRate,
     sample_bytes: usize,
+    data_start: usize,
     next_sample_offset: usize,
     format: Format,
     length: usize,
@@ -98,6 +99,7 @@ impl WavPlayer {
             channels: channels.into(),
             sample_rate: sample_rate,
             sample_bytes,
+            data_start,
             next_sample_offset: data_start,
             format,
             length: data_len / sample_bytes,
@@ -165,6 +167,10 @@ impl Source for WavPlayer {
         } else {
             0
         }
+    }
+
+    fn reset(&mut self) {
+        self.next_sample_offset = self.data_start;
     }
 }
 
