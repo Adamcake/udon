@@ -62,4 +62,8 @@ where
             frame_count * to
         }
     }
+
+    fn reset(&mut self) {
+        self.source.reset()
+    }
 }

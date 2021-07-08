@@ -123,15 +123,7 @@ impl<S: Source> Resampler<S> {
             filter_2.set_len(filter_samples);
         }
 
-        let last_sample = {
-            let len = source.write_samples(&mut filter_1);
-            if len == filter_samples {
-                let len = source.write_samples(&mut filter_2);
-                if len == filter_samples { None } else { Some(len) }
-            } else {
-                Some(len)
-            }
-        };
+        let last_sample = Self::init_filter(&mut source, &mut filter_1, &mut filter_2);
 
         Self {
             source,
@@ -225,6 +217,13 @@ impl<S: Source> Source for Resampler<S> {
 
         buffer.len()
     }
+
+    fn reset(&mut self) {
+        self.source.reset();
+        Self::init_filter(&mut self.source, &mut self.filter_1, &mut self.filter_2);
+        self.input_offset = 0;
+        self.output_count = 0;
+    }
 }
 
 impl<S> Resampler<S> where S: Source {
@@ -270,6 +269,17 @@ impl<S> Resampler<S> where S: Source {
             }
 
             output
+        }
+    }
+
+    // Initializes a filter from a Sample, returning the optional last_sample
+    fn init_filter(source: &mut S, filter_1: &mut [Sample], filter_2: &mut [Sample]) -> Option<usize> {
+        let len = source.write_samples(filter_1);
+        if len == filter_1.len() {
+            let len = source.write_samples(filter_2);
+            if len == filter_2.len() { None } else { Some(len) }
+        } else {
+            Some(len)
         }
     }
 }

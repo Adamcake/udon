@@ -29,4 +29,10 @@ pub trait Source {
     /// A value lower than `buffer.len()` indicates the sound has ended.
     /// Any further calls to this function after that must not write anything and return 0.
     fn write_samples(&mut self, buffer: &mut [Sample]) -> usize;
+
+    /// Resets the Source back to its start or its default state.
+    ///
+    /// Note that a Source does not necessarily have to output the same samples after each reset,
+    /// although things such as file players usually will.
+    fn reset(&mut self);
 }
