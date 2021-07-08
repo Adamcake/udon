@@ -220,7 +220,7 @@ impl<S: Source> Source for Resampler<S> {
 
     fn reset(&mut self) {
         self.source.reset();
-        Self::init_filter(&mut self.source, &mut self.filter_1, &mut self.filter_2);
+        self.last_sample = Self::init_filter(&mut self.source, &mut self.filter_1, &mut self.filter_2);
         self.input_offset = 0;
         self.output_count = 0;
     }
@@ -240,7 +240,7 @@ impl<S> Resampler<S> where S: Source {
                     None => (channel, kaiser_offset - (sample_index / channels)),
                 }
             };
-    
+
             let filter_skip_2 = {
                 match sample_index.checked_sub(kaiser_offset * channels + self.buffer_size) {
                     Some(x) => x,
