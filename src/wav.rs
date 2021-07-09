@@ -1,5 +1,5 @@
 use crate::source::{ChannelCount, Sample, SampleRate, Source};
-use std::{convert::TryFrom, sync::Arc};
+use std::sync::Arc;
 
 /// A Source object for decoding and playing samples from a .wav file.
 ///
@@ -46,40 +46,49 @@ pub enum Format {
 
 impl WavPlayer {
     pub fn new(file: impl Into<Vec<u8>>) -> Result<Self, Error> {
+        fn find_section(data: &[u8], section_name: &[u8; 4]) -> Option<(usize, usize)> {
+            let mut data_start = 12;
+            let data_len = loop {
+                if data.len() < data_start + 8 {
+                    return None;
+                }
+                let is_data_chunk = data[data_start..(data_start + section_name.len())] == section_name[..];
+                let data_len = u32::from_le_bytes([
+                    data[data_start + 4],
+                    data[data_start + 5],
+                    data[data_start + 6],
+                    data[data_start + 7],
+                ]) as usize;
+                data_start += 8;
+                if is_data_chunk {
+                    break data_len
+                } else {
+                    data_start += data_len;
+                }
+            };
+            Some((data_start, data_len))
+        }
+
         let mut file = file.into();
-        if file.len() < 36 || file[0..4] != [b'R', b'I', b'F', b'F'] || file[8..15] != [b'W', b'A', b'V', b'E', b'f', b'm', b't'] {
+        if file.get(0..4) != Some(&[b'R', b'I', b'F', b'F']) || file.get(8..12) != Some(&[b'W', b'A', b'V', b'E']) {
             return Err(Error::InvalidFile)
         }
 
-        let audio_format = i16::from_le_bytes([file[20], file[21]]);
-        let channels = u16::from_le_bytes([file[22], file[23]]);
-        let sample_rate = u32::from_le_bytes([file[24], file[25], file[26], file[27]]);
-        let sample_bits = u16::from_le_bytes([file[34], file[35]]);
+        let (fmt_start, fmt_len) = find_section(&file, b"fmt ").ok_or(Error::InvalidFile)?;
+        if fmt_len < 16 {
+            return Err(Error::InvalidFile)
+        }
+        let fmt = file.get(fmt_start..(fmt_start + fmt_len)).ok_or(Error::InvalidFile)?;
+
+        let audio_format = i16::from_le_bytes([fmt[0], fmt[1]]);
+        let channels = u16::from_le_bytes([fmt[2], fmt[3]]);
+        let sample_rate = u32::from_le_bytes([fmt[4], fmt[5], fmt[6], fmt[7]]);
+        let sample_bits = u16::from_le_bytes([fmt[14], fmt[15]]);
 
         let channels = ChannelCount::new(channels).ok_or(Error::UnknownFormat)?;
         let sample_rate = SampleRate::new(sample_rate).ok_or(Error::UnknownFormat)?;
 
-        let mut data_start = usize::try_from(u32::from_le_bytes([file[16], file[17], file[18], file[19]]) + 20)
-            .map_err(|_| Error::MalformedData)?;
-
-        let data_len = loop {
-            if file.len() < data_start + 8 {
-                return Err(Error::InvalidFile)
-            }
-            let is_data_chunk = file[data_start..(data_start + 4)] == [b'd', b'a', b't', b'a'];
-            let data_len = u32::from_le_bytes([
-                file[data_start + 4],
-                file[data_start + 5],
-                file[data_start + 6],
-                file[data_start + 7],
-            ]) as usize;
-            data_start += 8;
-            if is_data_chunk {
-                break data_len
-            } else {
-                data_start += data_len;
-            }
-        };
+        let (data_start, data_len) = find_section(&file, b"data").ok_or(Error::InvalidFile)?;
 
         let expected_file_length = data_len + data_start;
         if expected_file_length > file.len() {
