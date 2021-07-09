@@ -1,5 +1,5 @@
 use crate::source::{ChannelCount, Sample, SampleRate, Source};
-use std::sync::Arc;
+use std::{convert::TryFrom, sync::Arc};
 
 /// A Source object for decoding and playing samples from a .wav file.
 ///
@@ -47,7 +47,7 @@ pub enum Format {
 impl WavPlayer {
     pub fn new(file: impl Into<Vec<u8>>) -> Result<Self, Error> {
         let mut file = file.into();
-        if file.len() < 36 || file[0..4] != [b'R', b'I', b'F', b'F'] || file[8..12] != [b'W', b'A', b'V', b'E'] {
+        if file.len() < 36 || file[0..4] != [b'R', b'I', b'F', b'F'] || file[8..15] != [b'W', b'A', b'V', b'E', b'f', b'm', b't'] {
             return Err(Error::InvalidFile)
         }
 
@@ -59,7 +59,9 @@ impl WavPlayer {
         let channels = ChannelCount::new(channels).ok_or(Error::UnknownFormat)?;
         let sample_rate = SampleRate::new(sample_rate).ok_or(Error::UnknownFormat)?;
 
-        let mut data_start: usize = 36;
+        let mut data_start = usize::try_from(u32::from_le_bytes([file[16], file[17], file[18], file[19]]) + 20)
+            .map_err(|_| Error::MalformedData)?;
+
         let data_len = loop {
             if file.len() < data_start + 8 {
                 return Err(Error::InvalidFile)
