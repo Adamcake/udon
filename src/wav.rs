@@ -211,7 +211,9 @@ fn get_sample_i16(data: &[u8; 2]) -> f32 {
 #[inline(always)]
 fn get_sample_i24(data: &[u8; 3]) -> f32 {
     let sample = i32::from_le_bytes([data[0], data[1], data[2], 0]);
-    (sample as f32) / 8388608.0 // 2^23, or the imaginary i24::MAX
+    let sign_mask = 1 << 23;
+    let sample = (sample ^ sign_mask).wrapping_sub(sign_mask) as i32;
+    (f64::from(sample) / 8388608.0) as f32 // 2^23, or the imaginary i24::MAX
 }
 
 #[inline(always)]
