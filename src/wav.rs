@@ -84,6 +84,23 @@ impl WavPlayer {
         let channels = u16::from_le_bytes([fmt[2], fmt[3]]);
         let sample_rate = u32::from_le_bytes([fmt[4], fmt[5], fmt[6], fmt[7]]);
         let sample_bits = u16::from_le_bytes([fmt[14], fmt[15]]);
+        let ext_guid = fmt.get(24..40);
+
+        let data_format_pcm = &[1, 0, 0, 0, 0, 0, 16, 0, 128, 0, 0, 170, 0, 56, 155, 113];
+        let data_format_float = &[3, 0, 0, 0, 0, 0, 16, 0, 128, 0, 0, 170, 0, 56, 155, 113];
+        let format = match (audio_format, sample_bits) {
+            (1, 8) => Format::U8,
+            (1, 16) => Format::I16,
+            (1, 24) => Format::I24,
+            (1, 32) => Format::I32,
+            (3, 32) => Format::F32,
+            (-2, 8) if ext_guid == Some(data_format_pcm) => Format::U8,
+            (-2, 16) if ext_guid == Some(data_format_pcm) => Format::I16,
+            (-2, 24) if ext_guid == Some(data_format_pcm) => Format::I24,
+            (-2, 32) if ext_guid == Some(data_format_pcm) => Format::I32,
+            (-2, 32) if ext_guid == Some(data_format_float) => Format::F32,
+            _ => return Err(Error::UnknownFormat),
+        };
 
         let channels = ChannelCount::new(channels).ok_or(Error::UnknownFormat)?;
         let sample_rate = SampleRate::new(sample_rate).ok_or(Error::UnknownFormat)?;
@@ -96,15 +113,6 @@ impl WavPlayer {
         } else {
             file.truncate(expected_file_length);
         }
-
-        let format = match (audio_format, sample_bits) {
-            (1, 8) => Format::U8,
-            (1, 16) => Format::I16,
-            (1, 24) => Format::I24,
-            (1, 32) => Format::I32,
-            (3, 32) => Format::F32,
-            _ => return Err(Error::UnknownFormat),
-        };
 
         let sample_bytes = usize::from(sample_bits / 8);
 
