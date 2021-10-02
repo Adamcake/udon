@@ -153,7 +153,7 @@ pub struct PROPVARIANT { _placeholder: *const c_void }
 pub struct SECURITY_ATTRIBUTES { _placeholder: *const c_void }
 
 // Windows Functions (Static Linking)
-#[link(name = "Kernel32")]
+#[link(name = "kernel32")]
 extern "system" {
     pub fn CreateEventW(
         lpEventAttributes: LPSECURITY_ATTRIBUTES,
@@ -167,7 +167,7 @@ extern "system" {
     pub fn GetCurrentThread() -> HANDLE;
     pub fn SetThreadPriority(hThread: HANDLE, nPriority: c_int) -> BOOL;
 }
-#[link(name = "Ole32")]
+#[link(name = "ole32")]
 extern "system" {
     pub fn CoInitializeEx(pvReserved: LPVOID, dwCoInit: DWORD) -> HRESULT;
     pub fn CoUninitialize();
