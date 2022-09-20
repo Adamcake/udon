@@ -88,6 +88,7 @@ fn main() {
     // Windows...
     if target.contains("windows") {
         // We need to link ole32 on Windows.
+        println!("cargo:rustc-link-lib=avrt");
         println!("cargo:rustc-link-lib=ole32");
     }
 

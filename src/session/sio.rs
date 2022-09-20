@@ -1,4 +1,4 @@
-use crate::{error::Error, session, source::{self, ChannelCount, SampleRate, Source}};
+use crate::{error::Error, session, source::{ChannelCount, SampleRate, Source}};
 use std::{sync::Mutex, os::raw::c_int};
 use libsoundio_sys::*;
 
@@ -218,12 +218,13 @@ impl OutputStream {
             let mut guard = self.stream.lock().unwrap();
             let mut extra = Vec::with_capacity(32768);
             let mut exit = false;
-            let param = UdonCallbackParam {
+            let mut param = UdonCallbackParam {
                 source: &mut source as *mut Box<dyn Source> as _,
                 extra: &mut extra,
                 exit: &mut exit,
+                err: Ok(()),
             };
-            (**guard).userdata = &param as *const _ as _;
+            (**guard).userdata = &mut param as *mut _ as _;
             let err = soundio_outstream_start(*guard);
             if err != 0 {
                 panic!("failed to start outstream: {}", std::ffi::CStr::from_ptr(soundio_strerror(err)).to_str().unwrap());
@@ -231,8 +232,8 @@ impl OutputStream {
             while !exit {
                 soundio_wait_events(self.sio);
             }
+            param.err
         }
-        Ok(())
     }
 }
 
@@ -241,7 +242,6 @@ impl std::ops::Drop for OutputStream {
         unsafe {
             let guard = self.stream.lock().unwrap();
             soundio_outstream_pause(*guard, 1);
-            soundio_outstream_clear_buffer(*guard);
             soundio_outstream_destroy(*guard);
             soundio_device_unref(self.device);
         }
@@ -252,6 +252,7 @@ struct UdonCallbackParam {
     source: *mut Box<dyn Source>,
     extra: *mut Vec<f32>,
     exit: *mut bool,
+    err: Result<(), Error>,
 }
 
 unsafe extern "C" fn udon_callback(
@@ -259,18 +260,18 @@ unsafe extern "C" fn udon_callback(
     _frame_count_min: c_int,
     frame_count_max: c_int,
 ) {
-    let param = (*outstream).userdata as *const UdonCallbackParam;
+    let param = (*outstream).userdata as *mut UdonCallbackParam;
     let channel_count = (*outstream).layout.channel_count as usize;
     let mut areas: *mut SoundIoChannelArea = std::ptr::null_mut();
     let mut frames_left: c_int = frame_count_max;
     let mut err: c_int;
-    print!("frame_count_max: {frame_count_max} !! ");
     while frames_left > 0 {
         let mut frame_count = frames_left;
         err = soundio_outstream_begin_write(outstream, &mut areas, &mut frame_count);
-        println!("channel_count: {channel_count} frame_count: {frame_count}");
         if err != 0 {
-            panic!("FUCK");
+            (*param).err = Err(Error::Unknown);
+            *(*param).exit = true;
+            return;
         }
         if frame_count == 0 {
             break;
@@ -281,7 +282,6 @@ unsafe extern "C" fn udon_callback(
         extra.reserve(units);
         extra.set_len(units);
         let total = (*(*param).source).write_samples(extra.as_mut_slice());
-        println!("total: {total}");
         extra.set_len(total);
         for ch in 0..channel_count {
             let area = *areas.offset(ch as _);
@@ -292,19 +292,12 @@ unsafe extern "C" fn udon_callback(
             for i in (total / channel_count)..frame_count as usize {
                 *p.add(area.step as usize * i).cast::<f32>() = 0.0;
             }
-            // println!("area p: {:p}", area.ptr);
-            // let out = std::slice::from_raw_parts_mut(area.ptr.cast::<f32>(), frame_count as _);
-            // for (i, sample) in extra.iter().copied().skip(ch as _).step_by(channel_count).enumerate() {
-            //     out[i] = sample;
-            // }
-            // let total_per_ch = total / channel_count;
-            // for s in &mut out[total_per_ch..] {
-            //     *s = 0.0;
-            // }
         }
         err = soundio_outstream_end_write(outstream);
         if err != 0 {
-            panic!("FUCK");
+            (*param).err = Err(Error::Unknown);
+            *(*param).exit = true;
+            return;
         }
         if total < units {
             *(*param).exit = true;
