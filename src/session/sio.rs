@@ -264,9 +264,11 @@ unsafe extern "C" fn udon_callback(
     let mut areas: *mut SoundIoChannelArea = std::ptr::null_mut();
     let mut frames_left: c_int = frame_count_max;
     let mut err: c_int;
+    print!("frame_count_max: {frame_count_max} !! ");
     while frames_left > 0 {
         let mut frame_count = frames_left;
         err = soundio_outstream_begin_write(outstream, &mut areas, &mut frame_count);
+        println!("channel_count: {channel_count} frame_count: {frame_count}");
         if err != 0 {
             panic!("FUCK");
         }
@@ -279,17 +281,26 @@ unsafe extern "C" fn udon_callback(
         extra.reserve(units);
         extra.set_len(units);
         let total = (*(*param).source).write_samples(extra.as_mut_slice());
+        println!("total: {total}");
         extra.set_len(total);
         for ch in 0..channel_count {
             let area = *areas.offset(ch as _);
-            let out = std::slice::from_raw_parts_mut(area.ptr.cast::<f32>(), frame_count as _);
-            for (sample, w) in extra.iter().copied().skip(ch as _).step_by(channel_count).zip(&mut *out) {
-                *w = sample;
+            let p = area.ptr;
+            for (i, sample) in extra.iter().copied().skip(ch as _).step_by(channel_count).enumerate() {
+                *p.add(area.step as usize * i).cast::<f32>() = sample;
             }
-            let total_per_ch = total / channel_count;
-            for s in &mut out[total_per_ch..] {
-                *s = 0.0;
+            for i in (total / channel_count)..frame_count as usize {
+                *p.add(area.step as usize * i).cast::<f32>() = 0.0;
             }
+            // println!("area p: {:p}", area.ptr);
+            // let out = std::slice::from_raw_parts_mut(area.ptr.cast::<f32>(), frame_count as _);
+            // for (i, sample) in extra.iter().copied().skip(ch as _).step_by(channel_count).enumerate() {
+            //     out[i] = sample;
+            // }
+            // let total_per_ch = total / channel_count;
+            // for s in &mut out[total_per_ch..] {
+            //     *s = 0.0;
+            // }
         }
         err = soundio_outstream_end_write(outstream);
         if err != 0 {
