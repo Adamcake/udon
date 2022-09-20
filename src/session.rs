@@ -146,11 +146,14 @@ backends! {
     /// Dummy API (no sound is played)
     mod dummy => Dummy if not(target_pointer_width = "0"),
 
-    /// Windows Audio Session API (WASAPI)
-    mod wasapi => Wasapi if all(target_os = "windows", feature = "wasapi"),
+    /// andrewrk's libsoundio
+    mod sio => SoundIo if not(target_pointer_width = "0"),
 
-    /// ALSA
-    mod alsa => Alsa if all(any(target_os = "dragonfly", target_os = "freebsd", target_os = "linux"), feature = "wasapi"),
+    // Windows Audio Session API (WASAPI)
+    //mod wasapi => Wasapi if all(target_os = "windows", feature = "wasapi"),
+
+    // ALSA
+    //mod alsa => Alsa if all(any(target_os = "dragonfly", target_os = "freebsd", target_os = "linux"), feature = "wasapi"),
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
