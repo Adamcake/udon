@@ -1,5 +1,5 @@
-use crate::{Sample, Source};
-use std::sync::mpsc::{self, Receiver, Sender};
+use crate::{source::{ChannelCount, SampleRate, Sample, Source}};
+use std::{sync::Arc, sync::{atomic::{AtomicBool, Ordering}, mpsc::{self, Receiver, Sender}}};
 
 const INIT_CAPACITY: usize = 16;
 
@@ -8,15 +8,16 @@ const INIT_CAPACITY: usize = 16;
 /// or any other place where a Source is expected.
 /// The MixerHandle is kept and used for dynamically adding Sources to the Mixer.
 pub struct Mixer {
-    channels: usize,
-    sources: Vec<Box<dyn Source + Send + Sync>>,
+    channels: ChannelCount,
+    sample_rate: SampleRate,
+    sources: Vec<(Box<dyn Source + Send + 'static>, Arc<SoundInfo>)>,
     input_buffer: Vec<Sample>,
-    receiver: Receiver<Box<dyn Source + Send + Sync + 'static>>,
+    receiver: Receiver<(Box<dyn Source + Send + 'static>, Arc<SoundInfo>)>,
 }
 
 /// Returned from Mixer::new(), and permanently associated with the Mixer created alongside it.
 /// Used for dynamically adding sounds to the Mixer with `handle.add()`
-pub struct MixerHandle(Sender<Box<dyn Source + Send + Sync + 'static>>);
+pub struct MixerHandle(Sender<(Box<dyn Source + Send + 'static>, Arc<SoundInfo>)>);
 
 /// Error type for Mixer calls
 #[derive(Debug, Clone, Copy)]
@@ -27,11 +28,17 @@ pub enum Error {
 }
 
 impl Mixer {
-    /// Constructs a new Mixer and MixerHandle. `channels` is the number of channels wanted in the output data.
-    pub fn new(channels: usize) -> (Self, MixerHandle) {
+    /// Constructs a new Mixer and MixerHandle.
+    ///
+    /// `Mixer` does not make any changes to the channel count or sample rate of its Sources. As such, it needs to know
+    /// its expected output rate and channel count on construction.
+    ///
+    /// If Sources with a different sample rate or channel count than this are subsequently added to the Mixer,
+    /// they will sound wrong. For resampling and rechanneling, see `Resampler` and `Rechanneler`.
+    pub fn new(sample_rate: SampleRate, channels: ChannelCount) -> (Self, MixerHandle) {
         let (sender, receiver) = mpsc::channel();
         (
-            Self { channels, sources: Vec::with_capacity(INIT_CAPACITY), input_buffer: Vec::new(), receiver },
+            Self { channels, sample_rate, sources: Vec::with_capacity(INIT_CAPACITY), input_buffer: Vec::new(), receiver },
             MixerHandle(sender),
         )
     }
@@ -47,46 +54,71 @@ impl Source for Mixer {
         }
 
         let input_buffer = &mut self.input_buffer;
-        let output_channel_count = self.channels;
 
-        self.sources.retain_mut(|source| {
-            let source_channel_count = source.channel_count();
-            input_buffer.resize_with(buffer.len() * source_channel_count / output_channel_count, Default::default);
-            let count = source.write_samples(input_buffer);
+        self.sources.retain_mut(|(source, info)| {
+            if info.stop.load(Ordering::Acquire) {
+                info.running.store(false, Ordering::Release);
+                false
+            } else {
+                input_buffer.resize_with(buffer.len(), Default::default);
+                let count = source.write_samples(input_buffer);
 
-            if source_channel_count == output_channel_count {
-                // Firstly, if the input and output channel counts are the same, pass straight through.
                 for (in_sample, out_sample) in input_buffer.iter().take(count).copied().zip(buffer.iter_mut()) {
                     *out_sample += in_sample;
                 }
-            } else if source_channel_count == 1 {
-                // Next, if the input is 1-channel, duplicate the next sample across all output channels.
-                for (in_sample, out_samples) in
-                    input_buffer.iter().take(count).copied().zip(buffer.chunks_exact_mut(output_channel_count))
-                {
-                    out_samples.iter_mut().for_each(|s| *s = in_sample);
-                }
-            } else {
-                // Different multi-channel counts. What do we do here!?
-                todo!("multi-channel mixing")
-            }
 
-            count == input_buffer.len()
+                let running = count == input_buffer.len();
+                info.running.store(running, Ordering::Release);
+                running
+            }
         });
 
         buffer.len()
     }
 
-    fn channel_count(&self) -> usize {
+    fn channel_count(&self) -> ChannelCount {
         self.channels
+    }
+
+    fn sample_rate(&self) -> SampleRate {
+        self.sample_rate
+    }
+
+    fn reset(&mut self) {
+        self.sources.clear()
     }
 }
 
 impl MixerHandle {
     /// Adds a Source to the Mixer associated with this handle. The Mixer will play the Source until it ends,
     /// then discard it.
-    pub fn add(&self, source: impl Source + Send + Sync + 'static) -> Result<(), Error> {
-        self.0.send(Box::new(source)).ok().ok_or(Error::SendError)
+    pub fn add(&self, source: impl Source + Send + 'static) -> Result<SoundHandle, Error> {
+        let arc = Arc::new(SoundInfo {
+            running: AtomicBool::new(true),
+            stop: AtomicBool::new(false),
+        });
+
+        self.0.send((Box::new(source), arc.clone())).map_err(|_| Error::SendError)?;
+        Ok(SoundHandle(arc))
+    }
+}
+
+struct SoundInfo {
+    running: AtomicBool,
+    stop: AtomicBool,
+}
+
+pub struct SoundHandle(Arc<SoundInfo>);
+
+impl SoundHandle {
+    #[inline(always)]
+    pub fn is_running(&self) -> bool {
+        self.0.running.load(Ordering::Acquire)
+    }
+
+    #[inline(always)]
+    pub fn stop(&self) {
+        self.0.stop.store(true, Ordering::Release)
     }
 }
 

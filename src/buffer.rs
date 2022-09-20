@@ -1,4 +1,4 @@
-use crate::{Sample, Source};
+use crate::source::{ChannelCount, Sample, SampleRate, Source};
 use std::{
     marker::PhantomData,
     sync::{Arc, Condvar, Mutex},
@@ -19,7 +19,8 @@ where
     S: Source + Send + 'static,
 {
     _source: PhantomData<S>,
-    channel_count: usize,
+    channel_count: ChannelCount,
+    sample_rate: SampleRate,
     buffer: Arc<(Mutex<RingBuffer>, Condvar)>,
 }
 
@@ -45,6 +46,7 @@ where
     /// Buffer capacity will never change (and thus, cannot be changed) after creation.
     pub fn with_capacity(mut source: S, capacity: usize) -> Self {
         let channel_count = source.channel_count();
+        let sample_rate = source.sample_rate();
         let mut buffer = Vec::with_capacity(capacity);
         unsafe {
             buffer.set_len(capacity);
@@ -113,7 +115,7 @@ where
             }
         });
 
-        Self { _source: PhantomData, channel_count, buffer: ring_buffer }
+        Self { _source: PhantomData, channel_count, sample_rate, buffer: ring_buffer }
     }
 }
 
@@ -121,6 +123,16 @@ impl<S> Source for Buffer<S>
 where
     S: Source + Send + 'static,
 {
+    #[inline]
+    fn channel_count(&self) -> ChannelCount {
+        self.channel_count
+    }
+
+    #[inline]
+    fn sample_rate(&self) -> SampleRate {
+        self.sample_rate
+    }
+
     fn write_samples(&mut self, mut output_buffer: &mut [Sample]) -> usize {
         loop {
             // Lock access to ring buffer
@@ -157,10 +169,6 @@ where
                 output_buffer = &mut output_buffer[sample_count..];
             }
         }
-    }
-
-    fn channel_count(&self) -> usize {
-        self.channel_count
     }
 }
 

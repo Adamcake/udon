@@ -1,4 +1,4 @@
-use crate::{Sample, Source};
+use crate::source::{ChannelCount, Sample, SampleRate, Source};
 
 /// Implementation of a PQF resampler. Construct with: Resampler::new(source, source_rate, dest_rate)
 /// Once constructed, it will behave as a Source object which outputs samples at the target sample rate.
@@ -9,8 +9,9 @@ where
     source: S,
     from: u32,
     to: u32,
+    dest_rate: SampleRate, // Actual output rate - different from `to` because that is scaled down by GCD
     left_offset: usize,
-    kaiser_values: Box<[f64]>,
+    kaiser_values: Box<[Box<[f32]>]>,
     filter_1: Box<[Sample]>,
     filter_2: Box<[Sample]>,
 
@@ -31,10 +32,7 @@ where
 }
 
 impl<S: Source> Resampler<S> {
-    pub fn new(mut source: S, source_rate: u32, dest_rate: u32) -> Self {
-        assert!(source_rate != 0);
-        assert!(dest_rate != 0);
-
+    pub fn new(mut source: S, dest_rate: SampleRate) -> Self {
         #[inline]
         fn gcd(a: u32, b: u32) -> u32 {
             if b == 0 { a } else { gcd(b, a % b) }
@@ -96,9 +94,11 @@ impl<S: Source> Resampler<S> {
             ((65.0 - 7.95) / (2.285 * 2.0 * std::f64::consts::PI * transition_width)).ceil() as usize
         }
 
-        let gcd = gcd(source_rate, dest_rate);
-        let from = source_rate / gcd;
-        let to = dest_rate / gcd;
+        let src = u32::from(source.sample_rate());
+        let dst = u32::from(dest_rate);
+        let gcd = gcd(src, dst);
+        let from = src / gcd;
+        let to = dst / gcd;
 
         let downscale_factor = f64::from(to.max(from));
         let cutoff = 0.475 / downscale_factor;
@@ -107,12 +107,14 @@ impl<S: Source> Resampler<S> {
         let kaiser_value_count = kaiser_order(transition_width) + 1;
         let left_offset = kaiser_value_count / 2;
 
-        let kaiser_values = (0..kaiser_value_count)
-            .map(|i| sinc_filter(left_offset as _, downscale_factor, cutoff, i as _))
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
+        let step = to as usize;
+        let kaiser_values: Box<[Box<[f32]>]> = (0..step).map(|start_val| {
+            (start_val..kaiser_value_count).step_by(step).rev().map(|i| {
+                sinc_filter(left_offset as _, downscale_factor, cutoff, i as _) as f32
+            }).collect::<Vec<_>>().into_boxed_slice()
+        }).collect::<Vec<_>>().into_boxed_slice();
 
-        let filter_samples = ((kaiser_value_count + to as usize) / to as usize) * source.channel_count();
+        let filter_samples = ((kaiser_value_count + to as usize) / to as usize) * usize::from(source.channel_count().get());
         let mut filter_1 = Vec::with_capacity(filter_samples);
         let mut filter_2 = Vec::with_capacity(filter_samples);
 
@@ -121,20 +123,13 @@ impl<S: Source> Resampler<S> {
             filter_2.set_len(filter_samples);
         }
 
-        let last_sample = {
-            let len = source.write_samples(&mut filter_1);
-            if len == filter_samples {
-                let len = source.write_samples(&mut filter_2);
-                if len == filter_samples { None } else { Some(len) }
-            } else {
-                Some(len)
-            }
-        };
+        let last_sample = Self::init_filter(&mut source, &mut filter_1, &mut filter_2);
 
         Self {
             source,
             from,
             to,
+            dest_rate,
             left_offset,
             kaiser_values,
             filter_1: filter_1.into_boxed_slice(),
@@ -149,10 +144,20 @@ impl<S: Source> Resampler<S> {
 }
 
 impl<S: Source> Source for Resampler<S> {
+    #[inline]
+    fn channel_count(&self) -> ChannelCount {
+        self.source.channel_count()
+    }
+
+    #[inline]
+    fn sample_rate(&self) -> SampleRate {
+        self.dest_rate
+    }
+
     fn write_samples(&mut self, buffer: &mut [Sample]) -> usize {
         let from = u64::from(self.from);
         let to = u64::from(self.to);
-        let channels = self.source.channel_count();
+        let channels = usize::from(self.channel_count().get());
 
         for (i, s) in buffer.iter_mut().enumerate() {
             // Tells us which channel we're currently looking at in the output data.
@@ -168,11 +173,19 @@ impl<S: Source> Source for Resampler<S> {
             let input_index = start / to;
 
             // input_index doesn't respect multi-channel tracks and ignores our filter setup, so now we'll
-            // translate it into a sample in our filter.
+            // translate it into a sample in our filter. This is actually the index of the LAST sample,
+            // inclusive, which we want to operate on.
             let mut sample_index = (input_index * channels as u64) + channel as u64 - self.input_offset;
 
-            // sample_index is where we start counting backwards, so if it's beyond the length of our two filters
-            // added together, then we need new data.
+            // And now get a set of kaiser values to multiply by the filter.
+            let kaiser_values = unsafe {
+                // SAFETY: self.kaiser_values is a boxed slice with length `to`, and
+                // kaiser_index is calculated as a modulo of `to`
+                self.kaiser_values.get_unchecked(kaiser_index as usize)
+            };
+
+            // sample_index is our last (inclusive) sample, so if it's beyond the length of our filter,
+            // then we need new data.
             // However, don't try to get new data if the source has already been emptied (ie. we have a last_sample).
             while (sample_index >= self.whole_filter_size as u64) && self.last_sample.is_none() {
                 // Read new samples into filter 1, which is now fully depleted, so it's fine to overwrite it.
@@ -190,50 +203,14 @@ impl<S: Source> Source for Resampler<S> {
             }
 
             // If we are past the end of our audio, exit early and indicate how much of the buffer we filled
-            // This does leave off the last few samples of input audio. Worth fixing? Probably not.
             if let Some(end) = self.last_sample {
-                if sample_index as usize >= end {
+                if sample_index as usize + (self.left_offset * channels) > end {
                     return i
                 }
             }
 
-            // Multiply this set of input data by the relevant set of kaiser values and add them all together
-            if let Some(samples) = self.filter_1.get(..=sample_index as usize) {
-                // The start is in filter_1, and therefore everything we need is in filter_1,
-                // because we iter backwards from sample_index
-                *s = samples
-                    .iter()
-                    .rev()
-                    .step_by(channels)
-                    .zip(self.kaiser_values.iter().skip(kaiser_index as usize).step_by(to as usize))
-                    .map(|(s, k)| f64::from(*s) * k)
-                    .sum::<f64>() as Sample;
-            } else {
-                // The start is in filter_2
-                let offset = sample_index as usize - self.buffer_size;
-                if let Some(samples) = self.filter_2.get(..=offset) {
-                    // We might need some data from filter_1 as well
-                    let iter = samples.iter().rev().step_by(channels);
-                    let skip = iter.len();
-                    *s = (iter
-                        .zip(self.kaiser_values.iter().skip(kaiser_index as usize).step_by(to as usize))
-                        .map(|(s, k)| f64::from(*s) * k)
-                        .sum::<f64>()
-                        + self
-                            .filter_1
-                            .iter()
-                            .rev()
-                            .skip(channels - channel - 1)
-                            .step_by(channels)
-                            .zip(self.kaiser_values.iter().skip(kaiser_index as usize).step_by(to as usize).skip(skip))
-                            .map(|(s, k)| f64::from(*s) * k)
-                            .sum::<f64>()) as Sample;
-                } else {
-                    // The window has passed the end of filter_2, so everything we need is in filter_2
-                    // TODO: this is unreachable because of the early return. Should we handle this?
-                    unreachable!()
-                }
-            }
+            // And at last we can calculate an output sample.
+            *s = self.get_sample(kaiser_values, channels, channel, sample_index as usize);
 
             self.output_count += 1;
         }
@@ -241,7 +218,68 @@ impl<S: Source> Source for Resampler<S> {
         buffer.len()
     }
 
-    fn channel_count(&self) -> usize {
-        self.source.channel_count()
+    fn reset(&mut self) {
+        self.source.reset();
+        self.last_sample = Self::init_filter(&mut self.source, &mut self.filter_1, &mut self.filter_2);
+        self.input_offset = 0;
+        self.output_count = 0;
+    }
+}
+
+impl<S> Resampler<S> where S: Source {
+    // Calculates an output sample at the given sample_index.
+    // sample_index is the index of the LAST (inclusive) sample we want to use in the calculation.
+    // That's because, strangely, it's the most efficient way of calculating a stream position.
+    #[inline(always)]
+    fn get_sample(&self, kaiser_values: &[f32], channels: usize, channel: usize, sample_index: usize) -> Sample {
+        unsafe {
+            let kaiser_offset = kaiser_values.len() - 1;
+            let (filter_skip_1, kaiser_skip) = {
+                match sample_index.checked_sub(kaiser_offset * channels) {
+                    Some(x) => (x, 0),
+                    None => (channel, kaiser_offset - (sample_index / channels)),
+                }
+            };
+
+            let filter_skip_2 = {
+                match sample_index.checked_sub(kaiser_offset * channels + self.buffer_size) {
+                    Some(x) => x,
+                    None => channel,
+                }
+            };
+
+            let mut output: Sample = 0.0;
+            let mut f1_ptr = self.filter_1.as_ptr().add(filter_skip_1);
+            let mut f2_ptr = self.filter_2.as_ptr().add(filter_skip_2);
+            let mut kaiser_ptr = kaiser_values.as_ptr().add(kaiser_skip);
+            let f1_end = self.filter_1.as_ptr().add(self.buffer_size);
+            let f2_end = self.filter_2.as_ptr().add(self.buffer_size);
+            let kaiser_end = kaiser_values.as_ptr().add(kaiser_values.len());
+
+            while f1_ptr < f1_end && kaiser_ptr < kaiser_end {
+                output += (*f1_ptr) * (*kaiser_ptr);
+                kaiser_ptr = kaiser_ptr.add(1);
+                f1_ptr = f1_ptr.add(channels);
+            }
+
+            while f2_ptr < f2_end && kaiser_ptr < kaiser_end {
+                output += (*f2_ptr) * (*kaiser_ptr);
+                kaiser_ptr = kaiser_ptr.add(1);
+                f2_ptr = f2_ptr.add(channels);
+            }
+
+            output
+        }
+    }
+
+    // Initializes a filter from a Sample, returning the optional last_sample
+    fn init_filter(source: &mut S, filter_1: &mut [Sample], filter_2: &mut [Sample]) -> Option<usize> {
+        let len = source.write_samples(filter_1);
+        if len == filter_1.len() {
+            let len = source.write_samples(filter_2);
+            if len == filter_2.len() { None } else { Some(len) }
+        } else {
+            Some(len)
+        }
     }
 }
