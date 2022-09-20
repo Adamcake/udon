@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.5)
-project(libsoundio C)
+project(libsoundio LANGUAGES C CXX)
 set(CMAKE_MODULE_PATH ${libsoundio_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
 if(CMAKE_VERSION VERSION_LESS 3.0.0)
