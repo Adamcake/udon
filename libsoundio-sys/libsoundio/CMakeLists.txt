@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 2.8.5)
+
 project(libsoundio LANGUAGES C CXX)
+
 set(CMAKE_MODULE_PATH ${libsoundio_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
 if(CMAKE_VERSION VERSION_LESS 3.0.0)
@@ -197,9 +199,8 @@ set(LIBSOUNDIO_LIBS
     ${CMAKE_THREAD_LIBS_INIT}
 )
 
-set_source_files_properties(${LIBSOUNDIO_SOURCES} PROPERTIES LANGUAGE CXX)
-
 if(MSVC)
+    set_source_files_properties(${LIBSOUNDIO_SOURCES} PROPERTIES LANGUAGE CXX)
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /Wall")
     set(LIB_CFLAGS "/TP /W4")
     set(EXAMPLE_CFLAGS "/W4")
@@ -240,11 +241,6 @@ endif()
 
 if(BUILD_STATIC_LIBS)
     add_library(libsoundio_static STATIC ${LIBSOUNDIO_SOURCES})
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        set(CMAKE_CXX_FLAGS "-fno-exceptions")
-    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        set(CMAKE_CXX_FLAGS "-fno-exceptions")
-    endif()
     set_target_properties(libsoundio_static PROPERTIES
         OUTPUT_NAME ${SOUNDIO_STATIC_LIBNAME}
         COMPILE_FLAGS ${LIB_CFLAGS}

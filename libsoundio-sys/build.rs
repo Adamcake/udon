@@ -73,6 +73,7 @@ fn main() {
         for lib in alsa.libs.iter().chain(libpulse.libs.iter()) {
             println!("cargo:rustc-link-lib={}", lib);
         }
+        println!("cargo:rustc-link-lib=stdc++");
     }
 
     // Clear the output directory.
