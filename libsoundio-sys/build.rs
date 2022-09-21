@@ -67,6 +67,14 @@ fn main() {
         }
     }
 
+    if cfg!(unix) {
+        let alsa = pkg_config::probe_library("alsa").unwrap();
+        let libpulse = pkg_config::probe_library("libpulse").unwrap();
+        for lib in alsa.libs.iter().chain(libpulse.libs.iter()) {
+            println!("cargo:rustc-link-lib={}", lib);
+        }
+    }
+
     // Clear the output directory.
     let _ = fs::remove_dir_all(env::var("OUT_DIR").unwrap());
     // And then create an empty output directory.

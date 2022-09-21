@@ -11,3 +11,4 @@ bound to Rust with a modification of [libsoundio-sys](https://github.com/RamiHg/
 - apparently it's "stolen from libgit2-sys" so there's that too
 - changed callback signature to `unsafe extern` instead of `extern`
 - removed subprocessing git when it gets confused (lol)
+- made it actually build on unix systems
