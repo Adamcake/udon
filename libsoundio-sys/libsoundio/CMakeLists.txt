@@ -240,6 +240,11 @@ endif()
 
 if(BUILD_STATIC_LIBS)
     add_library(libsoundio_static STATIC ${LIBSOUNDIO_SOURCES})
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        set(CMAKE_CXX_FLAGS "-fno-exceptions")
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set(CMAKE_CXX_FLAGS "-fno-exceptions")
+    endif()
     set_target_properties(libsoundio_static PROPERTIES
         OUTPUT_NAME ${SOUNDIO_STATIC_LIBNAME}
         COMPILE_FLAGS ${LIB_CFLAGS}
