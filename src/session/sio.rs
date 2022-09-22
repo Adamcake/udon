@@ -178,6 +178,7 @@ impl Session {
             (*outstream).sample_rate = device.sample_rate;
             (*outstream).layout = device.layout;
             (*outstream).format = device.format;
+            (*outstream).software_latency = 0.01;
             let err = soundio_outstream_open(outstream);
             if err != 0 {
                 panic!("failed to open outstream: {}", std::ffi::CStr::from_ptr(soundio_strerror(err)).to_str().unwrap());
