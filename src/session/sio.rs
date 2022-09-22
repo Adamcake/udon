@@ -188,7 +188,6 @@ impl Session {
             assert_eq!((*outstream).sample_rate, device.sample_rate);
             assert_eq!((*outstream).layout.channel_count, device.layout.channel_count);
             assert_eq!((*outstream).format as u32, device.format as u32);
-            assert_eq!((*outstream).format as u32, SoundIoFormat::SoundIoFormatFloat32LE as u32);
             soundio_device_ref(device.handle);
             session_wrap!(Ok(OutputStream {
                 sio: device.sio.clone(),
@@ -261,6 +260,7 @@ unsafe extern "C" fn udon_callback(
     frame_count_max: c_int,
 ) {
     let param = (*outstream).userdata as *mut UdonCallbackParam;
+    let format = (*outstream).format;
     let channel_count = (*outstream).layout.channel_count as usize;
     let mut areas: *mut SoundIoChannelArea = std::ptr::null_mut();
     let mut frames_left: c_int = frame_count_max;
@@ -283,15 +283,26 @@ unsafe extern "C" fn udon_callback(
         extra.set_len(units);
         let total = (*(*param).source).write_samples(extra.as_mut_slice());
         extra.set_len(total);
-        for ch in 0..channel_count {
-            let area = *areas.offset(ch as _);
-            let p = area.ptr;
-            for (i, sample) in extra.iter().copied().skip(ch as _).step_by(channel_count).enumerate() {
-                *p.add(area.step as usize * i).cast::<f32>() = sample;
-            }
-            for i in (total / channel_count)..frame_count as usize {
-                *p.add(area.step as usize * i).cast::<f32>() = 0.0;
-            }
+        match format {
+            SoundIoFormat::SoundIoFormatFloat32LE | SoundIoFormat::SoundIoFormatFloat32BE => {
+                for ch in 0..channel_count {
+                    let area = *areas.offset(ch as _);
+                    let p = area.ptr;
+                    if cfg!(target_endian = "little") == (matches!(format, SoundIoFormat::SoundIoFormatFloat32LE)) {
+                        for (i, sample) in extra.iter().copied().skip(ch as _).step_by(channel_count).enumerate() {
+                            *p.add(area.step as usize * i).cast::<f32>() = sample;
+                        }
+                    } else {
+                        for (i, sample) in extra.iter().copied().skip(ch as _).step_by(channel_count).enumerate() {
+                            *p.add(area.step as usize * i).cast::<u32>() = sample.to_bits().swap_bytes();
+                        }
+                    }
+                    for i in (total / channel_count)..frame_count as usize {
+                        *p.add(area.step as usize * i).cast::<u32>() = 0;
+                    }
+                }
+            },
+            _ => (),
         }
         err = soundio_outstream_end_write(outstream);
         if err != 0 {
