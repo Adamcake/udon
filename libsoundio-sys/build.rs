@@ -70,7 +70,11 @@ fn main() {
     if cfg!(unix) {
         let alsa = pkg_config::probe_library("alsa").unwrap();
         let libpulse = pkg_config::probe_library("libpulse").unwrap();
-        for lib in alsa.libs.iter().chain(libpulse.libs.iter()) {
+        let jack = pkg_config::probe_library("jack").unwrap();
+        for lib in alsa.libs.iter()
+            .chain(libpulse.libs.iter())
+            .chain(jack.libs.iter())
+        {
             println!("cargo:rustc-link-lib={}", lib);
         }
         println!("cargo:rustc-link-lib=stdc++");
