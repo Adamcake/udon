@@ -91,6 +91,7 @@ fn main() {
         .define("BUILD_STATIC_LIBS", "ON")
         .define("BUILD_EXAMPLE_PROGRAMS", "OFF")
         .define("BUILD_TESTS", "OFF")
+        .define("CMAKE_POLICY_VERSION_MINIMUM", "3.5")
         .build();
 
     println!(
